@@ -2771,7 +2771,7 @@ git commit -m "Add explicit save action for kept photos"
 
 **Interfaces:**
 - Consumes: everything from Tasks 9, 10, 12–20.
-- Produces: `MainWindow` gains attributes `input_panel: InputPanel`, `gallery: ReviewGallery`, `cost_panel: CostPanel`, `decision_log: DecisionLog`, `provider: OpenAICropProvider`, `save_button: QPushButton`; method `output_folder() -> str` (returns `input_panel.current_folder() + "/out"` unless overridden — kept simple per the spec's fixed-default-with-override behavior, override wiring is a `QFileDialog` on a "Choose output folder..." button next to `save_button`).
+- Produces: `MainWindow` gains attributes `input_panel: InputPanel`, `gallery: ReviewGallery`, `cost_panel: CostPanel`, `decision_log: DecisionLog`, `provider: OpenAICropProvider`, `save_button: QPushButton`; method `output_folder() -> str` (returns `input_panel.current_folder() + "/out"` unless overridden — kept simple per the spec's fixed-default-with-override behavior, override wiring is a `QFileDialog` on a "Choose output folder..." button next to `save_button`); method `_run_escalation_worker(job, tier) -> None` (dispatches one `EscalationWorker` call at the given tier); module constant `AUTO_ESCALATE_CONFIDENCE_THRESHOLD: float` (0.6) driving the fully-automatic cheap→strong escalation in `_on_escalation_done` (Global Constraints: tier selection is automatic, no manual override).
 
 - [ ] **Step 1: Write the failing tests (appended to `tests/test_gui_smoke.py`)**
 
@@ -2811,6 +2811,33 @@ class MainWindowWiringTests(unittest.TestCase):
             out_dir = os.path.join(d, "out")
             self.assertTrue(os.path.isdir(out_dir))
             self.assertEqual(len(os.listdir(out_dir)), 1)
+
+    def test_low_confidence_cheap_tier_automatically_escalates_to_strong(self):
+        from gui.main_window import MainWindow
+        with tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            window = MainWindow()
+            window._start_processing(d, "square", 600, True)
+            window._worker.wait(10000)
+            _app.processEvents()
+            job = list(window.gallery.cards.values())[0].job
+
+            calls = []
+
+            class FakeProvider:
+                name = "openai"
+
+                def price_per_million_tokens(self, tier):
+                    return (1.0, 1.0)
+
+                def request_crop(self, image_bytes, detection_metadata, inner_ratio, tier):
+                    calls.append(tier)
+                    confidence = 0.3 if tier == "cheap" else 0.95
+                    return CropDecision(crop_box=(0.0, 0.0, 1.0, 1.0), confidence=confidence, tier=tier)
+
+            window.provider = FakeProvider()
+            window._run_escalation_worker(job, "cheap")
+            self.assertEqual(calls, ["cheap", "strong"])
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -2826,7 +2853,12 @@ escalation flow, cost panel, and save action together."""
 import sys
 from pathlib import Path
 
+# Two path inserts: "src" for the engine modules below, and this file's own
+# directory (gui/) so the bare sibling imports below (cost_panel,
+# crop_editor_dialog, etc.) resolve even when this module is loaded as
+# gui.main_window (e.g. from tests) rather than run as a top-level script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from PySide6.QtWidgets import (
     QFileDialog, QHBoxLayout, QMainWindow, QMessageBox, QPushButton, QVBoxLayout, QWidget,
@@ -2845,6 +2877,10 @@ from input_panel import InputPanel
 from review_gallery import ReviewGallery
 from save_action import save_kept_jobs
 from workers import EscalationWorker, ProcessFolderWorker
+
+# Below this confidence, the cheap-tier result auto-escalates to the strong
+# tier. Fully automatic per the Global Constraints - no manual override.
+AUTO_ESCALATE_CONFIDENCE_THRESHOLD = 0.6
 
 
 class MainWindow(QMainWindow):
@@ -2919,7 +2955,9 @@ class MainWindow(QMainWindow):
         confirm.exec()
         if not confirm.confirmed():
             return
-        tier = "cheap"
+        self._run_escalation_worker(job, "cheap")
+
+    def _run_escalation_worker(self, job, tier):
         escalation_worker = EscalationWorker(job, self.provider, tier)
         escalation_worker.photo_updated.connect(self._on_escalation_done)
         escalation_worker.error.connect(
@@ -2938,6 +2976,10 @@ class MainWindow(QMainWindow):
             confidence=job.crop_decision.confidence, timestamp=0.0,
         ))
         self.cost_panel.refresh()
+        # Fully automatic tier escalation, no manual override (Global Constraints):
+        # cheap tier first, escalate to strong only if confidence came back low.
+        if job.crop_decision.tier == "cheap" and job.crop_decision.confidence < AUTO_ESCALATE_CONFIDENCE_THRESHOLD:
+            self._run_escalation_worker(job, "strong")
 
     def _on_manual_crop_requested(self, job):
         lay_ratio = job.crop_box.x1 - job.crop_box.x0  # placeholder ratio if crop_box exists
@@ -2965,12 +3007,12 @@ class MainWindow(QMainWindow):
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `QT_QPA_PLATFORM=offscreen python -m unittest tests.test_gui_smoke -v`
-Expected: all tests PASS (23 from Tasks 12–20 + 3 new = 26 total in this file).
+Expected: all tests PASS (23 from Tasks 12–20 + 4 new = 27 total in this file).
 
 - [ ] **Step 5: Run the entire project test suite one final time**
 
 Run: `QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v`
-Expected: every test across every file passes (48 engine tests from Task 11 + 26 GUI tests + 5 crop-editor-state tests = 79 tests, 0 failures).
+Expected: every test across every file passes (48 engine tests from Task 11 + 27 GUI tests + 5 crop-editor-state tests = 80 tests, 0 failures).
 
 - [ ] **Step 6: Manual verification (not automatable — do this once by hand)**
 
@@ -2999,3 +3041,6 @@ git commit -m "Wire input panel, workers, gallery, escalation, cost panel, and s
 - **Placeholder scan:** no TBD/TODO markers; every step has runnable code and a concrete expected test result.
 - **Type consistency check:** `PhotoJob` fields introduced in Task 10 (`detection`, `triage_decision`, `crop_box`, `crop_decision`, `rendered`, `keep`, `error`) are used with the same names in Tasks 14, 15, 16, 17, 20, 21. `CropBox(x0,y0,x1,y1)` from Task 4 is used identically in Tasks 10, 17, 21. `CropDecision(crop_box, confidence, tier)` from Task 5 is used identically in Tasks 6, 10, 15, 16, 21. `DecisionRecord` fields from Task 8 match their usage in Task 21's `_on_escalation_done`.
 - **Fixed during self-review:** Task 21's `_on_photo_ready` originally had a dead no-op branch (`if not job.escalated_logged if hasattr(...) else True: pass`) left over from an earlier draft. Removed — it did nothing and no test exercised it either way.
+- **Fixed during pre-flight conflict scan (before dispatch):**
+  1. Task 21's `main_window.py` imported its `gui/` siblings (`cost_panel`, `crop_editor_dialog`, `detail_view_dialog`, `escalation_dialog`, `input_panel`, `review_gallery`, `save_action`, `workers`) as bare top-level modules, but every test that exercises this file loads it via `from gui.main_window import MainWindow` — a path where only `src/` and the repo root reach `sys.path`, never `gui/` itself. Only running `python gui/main.py` directly would have made those imports resolve (via Python's script-directory insertion), so the plan's own specified tests would have failed against the plan's own specified code. Fixed by adding a second `sys.path.insert` for the file's own directory, matching the pattern other `gui/` modules already use for reaching `src/`.
+  2. The Global Constraints promised fully-automatic cheap→strong tier escalation ("escalate to the stronger tier only if the first reports low confidence... no manual override"), but no task implemented it — Task 21's `_on_escalate_requested` hardcoded `tier = "cheap"` with no follow-up. Fixed by moving the tier decision into `_on_escalation_done` (where the async result naturally lands): a new `_run_escalation_worker(job, tier)` helper is called again with `"strong"` when the cheap tier's confidence falls below `AUTO_ESCALATE_CONFIDENCE_THRESHOLD` (0.6). This required no changes to Tasks 10 or 14 — `apply_escalation` and `EscalationWorker` stay single-tier primitives, exactly as already tested there. Added one new test to Task 21 verifying the auto-escalation call sequence.
