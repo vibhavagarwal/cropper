@@ -185,5 +185,37 @@ class ReviewGalleryTests(unittest.TestCase):
         self.assertIs(gallery.cards[job.src_path].job, job)
 
 
+from gui.detail_view_dialog import DetailViewDialog, render_detection_overlay  # noqa: E402
+from detection import DetectionResult, FaceBox, SaliencyResult  # noqa: E402
+
+
+class DetectionOverlayTests(unittest.TestCase):
+    def test_overlay_is_same_size_as_source_and_marks_a_face(self):
+        job = _make_job("a.jpg")
+        job.detection = DetectionResult(
+            faces=[FaceBox(10, 10, 40, 40)],
+            saliency=SaliencyResult(heatmap=np.zeros((600, 600), dtype="float32"),
+                                     blob_fraction=0.2, touches_edge=False),
+            symmetry_score=0.9,
+        )
+        overlay = render_detection_overlay(job)
+        self.assertEqual(overlay.size, job.rendered.size)
+        # a pixel on the drawn face-box border should differ from plain mid-gray background
+        overlay_arr = np.asarray(overlay.convert("RGB"))
+        self.assertFalse((overlay_arr[10, 10:50] == overlay_arr[10, 10, 0]).all())
+
+
+class DetailViewDialogTests(unittest.TestCase):
+    def test_dialog_constructs_with_job(self):
+        job = _make_job("a.jpg")
+        job.detection = DetectionResult(
+            faces=[], saliency=SaliencyResult(heatmap=np.zeros((10, 10), dtype="float32"),
+                                               blob_fraction=0.0, touches_edge=False),
+            symmetry_score=0.5,
+        )
+        dialog = DetailViewDialog(job)
+        self.assertIsNotNone(dialog)
+
+
 if __name__ == "__main__":
     unittest.main()
