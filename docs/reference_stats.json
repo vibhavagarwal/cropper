@@ -1,0 +1,93 @@
+{
+  "note": "Measured on the four camera-made example photos from the HP5 recipe post, as 799px web copies (downscaled from ~6240px, so grain is largely averaged out). Luma (L) percentiles out of 255. These are targets to sanity check the filter against, not a fit.",
+  "recipe_source": "https://fujixweekly.com/2022/03/23/fujifilm-x-trans-iv-film-simulation-recipe-ilford-hp5-plus-400/",
+  "images": {
+    "51957577450_36efa9d630_c.webp": {
+      "title": "Astoria & Columbia River (fog)",
+      "p0.5": 8,
+      "p2": 9,
+      "p10": 15,
+      "p25": 40,
+      "p50": 140,
+      "p75": 171,
+      "p90": 179,
+      "p98": 185,
+      "p99.5": 186,
+      "mean": 115,
+      "std": 65
+    },
+    "51956983996_d722c4ab34_c.webp": {
+      "title": "Stairs in the Forest",
+      "p0.5": 7,
+      "p2": 8,
+      "p10": 26,
+      "p25": 61,
+      "p50": 90,
+      "p75": 126,
+      "p90": 215,
+      "p98": 224,
+      "p99.5": 226,
+      "mean": 102,
+      "std": 63
+    },
+    "51957570090_2f1efc4f6e_c.webp": {
+      "title": "Old Fireplace (indoor)",
+      "p0.5": 6,
+      "p2": 9,
+      "p10": 20,
+      "p25": 43,
+      "p50": 80,
+      "p75": 130,
+      "p90": 160,
+      "p98": 186,
+      "p99.5": 196,
+      "mean": 87,
+      "std": 52
+    },
+    "51957288319_258afcf604_c.webp": {
+      "title": "Two Elk in a Yard",
+      "p0.5": 9,
+      "p2": 14,
+      "p10": 33,
+      "p25": 54,
+      "p50": 79,
+      "p75": 120,
+      "p90": 215,
+      "p98": 220,
+      "p99.5": 222,
+      "mean": 97,
+      "std": 61
+    }
+  },
+  "target_ranges_across_the_four": {
+    "black_floor_p0.5": [
+      6,
+      9
+    ],
+    "top_end_p99.5": [
+      186,
+      226
+    ],
+    "contrast_std": [
+      52,
+      65
+    ],
+    "hard_rules": "no clipped highlights (max well below 255), blacks lifted slightly, never crushed to 0",
+    "scene_dependent_do_not_fit": "median, white ceiling and spread depend on the scene (fog vs overcast vs interior), so they are not filter constants"
+  },
+  "current_filter_output_on_9_test_photos": {
+    "p0.5": [
+      10,
+      36
+    ],
+    "p99.5": [
+      182,
+      203
+    ],
+    "std": [
+      40,
+      57
+    ],
+    "note": "p0.5 above 18 occurs only on scenes with no real shadows (arcade, museum). The 182 at the low end is the garden photo, slightly under the reference top-end range of 186. Contrast is at the low edge of the reference range after the highlight reduction."
+  }
+}

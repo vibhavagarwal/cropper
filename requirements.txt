@@ -1,0 +1,7 @@
+numpy==2.5.3
+scipy==1.18.1
+Pillow==12.3.0
+PySide6==6.11.2
+opencv-contrib-python==4.11.0.86
+openai==3.16.2
+keyring==25.7.0
