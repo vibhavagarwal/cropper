@@ -319,18 +319,27 @@ class SaveActionTests(unittest.TestCase):
             self.assertTrue(os.path.isdir(out_dir))
 
 
+def _make_window(config_dir):
+    """Build a MainWindow rooted at a throwaway config dir instead of the
+    developer's real ~/.cropper, so tests never touch a real home directory."""
+    from gui.main_window import MainWindow
+    return MainWindow(
+        settings_path=_Path(config_dir) / "settings.json",
+        decision_log_path=_Path(config_dir) / "decision_log.jsonl",
+    )
+
+
 class MainWindowWiringTests(unittest.TestCase):
     def test_default_output_folder_is_input_folder_slash_out(self):
-        from gui.main_window import MainWindow
-        window = MainWindow()
-        window.input_panel.folder_edit.setText("/tmp/photos")
-        self.assertEqual(window.output_folder(), "/tmp/photos/out")
+        with tempfile.TemporaryDirectory() as config_dir:
+            window = _make_window(config_dir)
+            window.input_panel.folder_edit.setText("/tmp/photos")
+            self.assertEqual(window.output_folder(), "/tmp/photos/out")
 
     def test_processing_a_folder_populates_the_gallery(self):
-        from gui.main_window import MainWindow
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
-            window = MainWindow()
+            window = _make_window(config_dir)
             window.input_panel.folder_edit.setText(d)
             window.input_panel.shape_combo.setCurrentText("square")
             window.input_panel.canvas_spin.setValue(600)
@@ -340,10 +349,9 @@ class MainWindowWiringTests(unittest.TestCase):
             self.assertEqual(len(window.gallery.cards), 1)
 
     def test_save_writes_only_kept_jobs(self):
-        from gui.main_window import MainWindow
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
-            window = MainWindow()
+            window = _make_window(config_dir)
             window._start_processing(d, "square", 600, True)
             window._worker.wait(10000)
             _app.processEvents()
@@ -354,10 +362,9 @@ class MainWindowWiringTests(unittest.TestCase):
             self.assertEqual(len(os.listdir(out_dir)), 1)
 
     def test_low_confidence_cheap_tier_automatically_escalates_to_strong(self):
-        from gui.main_window import MainWindow
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
-            window = MainWindow()
+            window = _make_window(config_dir)
             window._start_processing(d, "square", 600, True)
             window._worker.wait(10000)
             _app.processEvents()

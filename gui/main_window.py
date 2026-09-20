@@ -1,6 +1,7 @@
 """Main window: wires the input panel, background workers, review gallery,
 escalation flow, cost panel, and save action together."""
 import sys
+import time
 from pathlib import Path
 
 # Two path inserts: "src" for the engine modules below, and this file's own
@@ -35,14 +36,14 @@ AUTO_ESCALATE_CONFIDENCE_THRESHOLD = 0.6
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, settings_path: Path = None, decision_log_path: Path = None):
         super().__init__()
         self.setWindowTitle("Cropper")
 
-        self.settings_path = Path.home() / ".cropper" / "settings.json"
+        self.settings_path = settings_path or (Path.home() / ".cropper" / "settings.json")
         self.settings = AppSettings.load(self.settings_path)
 
-        self.decision_log_path = Path.home() / ".cropper" / "decision_log.jsonl"
+        self.decision_log_path = decision_log_path or (Path.home() / ".cropper" / "decision_log.jsonl")
         self.decision_log = DecisionLog(self.decision_log_path)
 
         self.provider = OpenAICropProvider()
@@ -135,7 +136,7 @@ class MainWindow(QMainWindow):
         self.decision_log.add(DecisionRecord(
             photo_name=job.filename, escalated=True, tier=job.crop_decision.tier,
             provider=self.provider.name, cost=actual_cost,
-            confidence=job.crop_decision.confidence, timestamp=0.0,
+            confidence=job.crop_decision.confidence, timestamp=time.time(),
         ))
         self.cost_panel.refresh()
         # Fully automatic tier escalation, no manual override (Global Constraints):
