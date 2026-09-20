@@ -65,10 +65,13 @@ class MainWindow(QMainWindow):
         self.save_button.clicked.connect(self._on_save_clicked)
         choose_output_button = QPushButton("Choose output folder...")
         choose_output_button.clicked.connect(self._on_choose_output_clicked)
+        self.clear_button = QPushButton("Clear")
+        self.clear_button.clicked.connect(self._on_clear_clicked)
 
         bottom_row = QHBoxLayout()
         bottom_row.addWidget(self.save_button)
         bottom_row.addWidget(choose_output_button)
+        bottom_row.addWidget(self.clear_button)
 
         central = QWidget()
         layout = QVBoxLayout(central)
@@ -161,13 +164,20 @@ class MainWindow(QMainWindow):
         dialog = CropEditorDialog(job, inner_ratio=lay["inner_ratio"], parent=self)
         dialog.exec()
         new_box = dialog.result_crop_box()
-        if new_box is not None:
-            updated = P.apply_manual_crop(job, new_box)
-            self.gallery.update_job(updated)
+        if new_box is None:
+            self.statusBar().showMessage("Manual crop cancelled.", 3000)
+            return
+        updated = P.apply_manual_crop(job, new_box)
+        self.gallery.update_job(updated)
+        self.statusBar().showMessage(f"Manual crop applied to {job.filename}.", 3000)
 
     def _on_details_requested(self, job):
         dialog = DetailViewDialog(job, parent=self)
         dialog.exec()
+
+    def _on_clear_clicked(self):
+        self.gallery.clear()
+        self.statusBar().showMessage("Cleared.", 3000)
 
     def _on_save_clicked(self):
         kept = self.gallery.kept_jobs()

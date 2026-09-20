@@ -19,9 +19,11 @@ class MainWindowSmokeTests(unittest.TestCase):
         self.assertIsNotNone(window.settings)
 
 
-from PySide6.QtCore import QMimeData, QUrl
+from PySide6.QtCore import QMimeData, QUrl, Qt, QTimer
 from PySide6.QtGui import QDropEvent
 from PySide6.QtCore import QPoint
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QDialogButtonBox
 
 from gui.input_panel import InputPanel  # noqa: E402
 from settings import AppSettings  # noqa: E402
@@ -184,6 +186,21 @@ class ReviewGalleryTests(unittest.TestCase):
         job.rendered = Image.new("L", (600, 600), 200)
         gallery.update_job(job)
         self.assertIs(gallery.cards[job.src_path].job, job)
+
+    def test_clear_removes_all_cards(self):
+        gallery = ReviewGallery()
+        gallery.add_job(_make_job("a.jpg"))
+        gallery.add_job(_make_job("b.jpg"))
+        gallery.clear()
+        self.assertEqual(gallery.cards, {})
+        self.assertEqual(gallery._grid.count(), 0)
+
+    def test_clear_then_add_job_starts_grid_layout_over(self):
+        gallery = ReviewGallery()
+        gallery.add_job(_make_job("a.jpg"))
+        gallery.clear()
+        gallery.add_job(_make_job("b.jpg"))
+        self.assertEqual(list(gallery.cards.keys()), ["/tmp/b.jpg"])
 
 
 from gui.detail_view_dialog import DetailViewDialog, render_detection_overlay  # noqa: E402
@@ -417,6 +434,61 @@ class MainWindowWiringTests(unittest.TestCase):
             window.provider = FakeProvider()
             window._run_escalation_worker(job, "cheap")
             self.assertEqual(calls, ["cheap", "strong"])
+
+    def test_clear_button_empties_the_gallery(self):
+        with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            window = _make_window(config_dir)
+            window._start_processing(d, "square", 600, True)
+            window._worker.wait(10000)
+            _app.processEvents()
+            self.assertEqual(len(window.gallery.cards), 1)
+
+            QTest.mouseClick(window.clear_button, Qt.LeftButton)
+
+            self.assertEqual(len(window.gallery.cards), 0)
+
+    def test_manual_crop_accept_shows_status_message_and_updates_rendered(self):
+        with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            window = _make_window(config_dir)
+            window._start_processing(d, "square", 600, True)
+            window._worker.wait(10000)
+            _app.processEvents()
+            job = list(window.gallery.cards.values())[0].job
+            rendered_before = job.rendered
+
+            def accept_dialog():
+                dlg = _app.activeModalWidget()
+                dlg.findChild(QDialogButtonBox).button(
+                    QDialogButtonBox.StandardButton.Ok).click()
+
+            QTimer.singleShot(0, accept_dialog)
+            window._on_manual_crop_requested(job)
+
+            self.assertIn("Manual crop applied", window.statusBar().currentMessage())
+            self.assertIsNot(job.rendered, rendered_before)
+
+    def test_manual_crop_cancel_shows_status_message_and_leaves_job_unchanged(self):
+        with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            window = _make_window(config_dir)
+            window._start_processing(d, "square", 600, True)
+            window._worker.wait(10000)
+            _app.processEvents()
+            job = list(window.gallery.cards.values())[0].job
+            rendered_before = job.rendered
+
+            def cancel_dialog():
+                dlg = _app.activeModalWidget()
+                dlg.findChild(QDialogButtonBox).button(
+                    QDialogButtonBox.StandardButton.Cancel).click()
+
+            QTimer.singleShot(0, cancel_dialog)
+            window._on_manual_crop_requested(job)
+
+            self.assertIn("cancelled", window.statusBar().currentMessage())
+            self.assertIs(job.rendered, rendered_before)
 
 
 if __name__ == "__main__":
