@@ -28,7 +28,7 @@ from detail_view_dialog import DetailViewDialog
 from escalation_dialog import EscalationConfirmDialog
 from input_panel import InputPanel
 from review_gallery import ReviewGallery
-from save_action import save_kept_jobs
+from save_action import expected_output_path, save_kept_jobs
 from workers import EscalationWorker, ProcessFolderWorker
 
 # Below this confidence, the cheap-tier result auto-escalates to the strong
@@ -95,6 +95,7 @@ class MainWindow(QMainWindow):
         if self._worker is not None and self._worker.isRunning():
             self.statusBar().showMessage("Already processing a folder — please wait for it to finish.", 5000)
             return
+        self.gallery.clear()
         # Keep the input panel's folder field authoritative for output_folder()
         # even when a caller (e.g. a test, or a future re-run action) invokes
         # this directly instead of going through the panel's own signal.
@@ -186,6 +187,9 @@ class MainWindow(QMainWindow):
         self.settings.save(self.settings_path)
         written = save_kept_jobs(kept, out_folder)
         attempted = [j for j in kept if not j.error and j.rendered is not None]
+        for j in attempted:
+            if expected_output_path(j, out_folder) in written:
+                self.gallery.remove_job(j.src_path)
         if len(written) < len(attempted):
             self.statusBar().showMessage(
                 f"Saved {len(written)} of {len(attempted)} photo(s) — "

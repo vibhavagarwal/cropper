@@ -187,6 +187,21 @@ class ReviewGalleryTests(unittest.TestCase):
         gallery.update_job(job)
         self.assertIs(gallery.cards[job.src_path].job, job)
 
+    def test_remove_job_removes_only_that_card(self):
+        gallery = ReviewGallery()
+        job_a, job_b = _make_job("a.jpg"), _make_job("b.jpg")
+        gallery.add_job(job_a)
+        gallery.add_job(job_b)
+        gallery.remove_job(job_a.src_path)
+        self.assertEqual(list(gallery.cards.keys()), [job_b.src_path])
+        self.assertEqual(gallery._grid.count(), 1)
+
+    def test_remove_job_with_unknown_path_is_a_no_op(self):
+        gallery = ReviewGallery()
+        gallery.add_job(_make_job("a.jpg"))
+        gallery.remove_job("/tmp/does-not-exist.jpg")
+        self.assertEqual(len(gallery.cards), 1)
+
     def test_clear_removes_all_cards(self):
         gallery = ReviewGallery()
         gallery.add_job(_make_job("a.jpg"))
@@ -408,6 +423,43 @@ class MainWindowWiringTests(unittest.TestCase):
             out_dir = os.path.join(d, "out")
             self.assertTrue(os.path.isdir(out_dir))
             self.assertEqual(len(os.listdir(out_dir)), 1)
+
+    def test_starting_a_new_run_clears_the_previous_gallery(self):
+        with tempfile.TemporaryDirectory() as config_dir, \
+                tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
+            _write_synthetic(os.path.join(d1, "a.jpg"), seed=1)
+            _write_synthetic(os.path.join(d2, "b.jpg"), seed=2)
+            window = _make_window(config_dir)
+            window._start_processing(d1, "square", 600, True)
+            window._worker.wait(10000)
+            _app.processEvents()
+            self.assertEqual(len(window.gallery.cards), 1)
+
+            window._start_processing(d2, "square", 600, True)
+            # clear() runs synchronously, before the new worker thread starts
+            self.assertEqual(len(window.gallery.cards), 0)
+            window._worker.wait(10000)
+            _app.processEvents()
+            self.assertEqual(len(window.gallery.cards), 1)
+            self.assertIn("b.jpg", list(window.gallery.cards.values())[0].job.filename)
+
+    def test_save_removes_saved_jobs_but_keeps_unselected_ones_visible(self):
+        with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            _write_synthetic(os.path.join(d, "b.jpg"), seed=2)
+            window = _make_window(config_dir)
+            window._start_processing(d, "square", 600, True)
+            window._worker.wait(10000)
+            _app.processEvents()
+            self.assertEqual(len(window.gallery.cards), 2)
+
+            cards = list(window.gallery.cards.values())
+            kept_card, other_card = cards[0], cards[1]
+            kept_card.keep_checkbox.setChecked(True)
+            window._on_save_clicked()
+
+            self.assertNotIn(kept_card.job.src_path, window.gallery.cards)
+            self.assertIn(other_card.job.src_path, window.gallery.cards)
 
     def test_low_confidence_cheap_tier_automatically_escalates_to_strong(self):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:

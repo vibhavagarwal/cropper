@@ -102,6 +102,12 @@ class ReviewGallery(QScrollArea):
     def kept_jobs(self):
         return [card.job for card in self.cards.values() if card.keep_checkbox.isChecked()]
 
+    def remove_job(self, src_path):
+        card = self.cards.pop(src_path, None)
+        if card is not None:
+            self._grid.removeWidget(card)
+            card.deleteLater()
+
     def clear(self):
         for card in self.cards.values():
             self._grid.removeWidget(card)

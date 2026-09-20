@@ -3,14 +3,18 @@ chosen output folder. Nothing else in the app ever writes to disk."""
 import os
 
 
+def expected_output_path(job, output_folder: str) -> str:
+    stem = os.path.splitext(job.filename)[0]
+    return os.path.join(output_folder, f"{stem}_cropper.jpg")
+
+
 def save_kept_jobs(jobs, output_folder: str) -> list:
     os.makedirs(output_folder, exist_ok=True)
     written = []
     for job in jobs:
         if not job.keep or job.error or job.rendered is None:
             continue
-        stem = os.path.splitext(job.filename)[0]
-        dst = os.path.join(output_folder, f"{stem}_cropper.jpg")
+        dst = expected_output_path(job, output_folder)
         try:
             job.rendered.convert("L").save(dst, quality=92, optimize=True)
             written.append(dst)
