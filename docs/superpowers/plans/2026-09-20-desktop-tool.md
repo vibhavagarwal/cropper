@@ -524,12 +524,16 @@ class FormulaCropTests(unittest.TestCase):
         self.assertAlmostEqual((y0 + y1) / 2, 500, delta=1)
 
     def test_off_center_face_pulls_crop_toward_a_third_line(self):
-        # face in the left half of the frame -> crop should NOT be centered on the image
-        faces = [FaceBox(50, 450, 100, 100)]
-        box = C.formula_crop(1000, 1000, inner_ratio=1.0, faces=faces, symmetric=False)
-        x0, y0, x1, y1 = box.to_pixels(1000, 1000)
+        # 1500x1000 image, square crop (inner_ratio=1.0) leaves 500px of horizontal
+        # slack (crop_w=1000 < img_w=1500) for the crop to actually shift - a square
+        # crop of a square image would have zero slack on either axis and could
+        # never be off-center regardless of face position, so this must be
+        # rectangular for the test to be satisfiable at all.
+        faces = [FaceBox(50, 450, 100, 100)]  # face in the left portion of the frame
+        box = C.formula_crop(1500, 1000, inner_ratio=1.0, faces=faces, symmetric=False)
+        x0, y0, x1, y1 = box.to_pixels(1500, 1000)
         crop_center_x = (x0 + x1) / 2
-        self.assertLess(crop_center_x, 500)
+        self.assertLess(crop_center_x, 750)  # not centered on the full 1500-wide image
 
     def test_crop_stays_within_source_bounds(self):
         faces = [FaceBox(0, 0, 20, 20)]
@@ -3044,3 +3048,4 @@ git commit -m "Wire input panel, workers, gallery, escalation, cost panel, and s
 - **Fixed during pre-flight conflict scan (before dispatch):**
   1. Task 21's `main_window.py` imported its `gui/` siblings (`cost_panel`, `crop_editor_dialog`, `detail_view_dialog`, `escalation_dialog`, `input_panel`, `review_gallery`, `save_action`, `workers`) as bare top-level modules, but every test that exercises this file loads it via `from gui.main_window import MainWindow` — a path where only `src/` and the repo root reach `sys.path`, never `gui/` itself. Only running `python gui/main.py` directly would have made those imports resolve (via Python's script-directory insertion), so the plan's own specified tests would have failed against the plan's own specified code. Fixed by adding a second `sys.path.insert` for the file's own directory, matching the pattern other `gui/` modules already use for reaching `src/`.
   2. The Global Constraints promised fully-automatic cheap→strong tier escalation ("escalate to the stronger tier only if the first reports low confidence... no manual override"), but no task implemented it — Task 21's `_on_escalate_requested` hardcoded `tier = "cheap"` with no follow-up. Fixed by moving the tier decision into `_on_escalation_done` (where the async result naturally lands): a new `_run_escalation_worker(job, tier)` helper is called again with `"strong"` when the cheap tier's confidence falls below `AUTO_ESCALATE_CONFIDENCE_THRESHOLD` (0.6). This required no changes to Tasks 10 or 14 — `apply_escalation` and `EscalationWorker` stay single-tier primitives, exactly as already tested there. Added one new test to Task 21 verifying the auto-escalation call sequence.
+- **Fixed during Task 4 execution (implementer flagged it, controller ruled and fixed the plan text):** Task 4's `test_off_center_face_pulls_crop_toward_a_third_line` originally used a 1000×1000 image with `inner_ratio=1.0` — a square crop of a square image is forced to exactly fill the image with zero slack on either axis, making an off-center crop mathematically impossible regardless of face position or implementation correctness. Fixed by making the test image rectangular (1500×1000) so the square crop retains 500px of horizontal slack to actually shift.
