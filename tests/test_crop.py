@@ -34,12 +34,16 @@ class FormulaCropTests(unittest.TestCase):
         self.assertAlmostEqual((y0 + y1) / 2, 500, delta=1)
 
     def test_off_center_face_pulls_crop_toward_a_third_line(self):
-        # face in the left half of the frame -> crop should NOT be centered on the image
-        faces = [FaceBox(50, 450, 100, 100)]
-        box = C.formula_crop(1000, 1000, inner_ratio=1.0, faces=faces, symmetric=False)
-        x0, y0, x1, y1 = box.to_pixels(1000, 1000)
+        # 1500x1000 image, square crop (inner_ratio=1.0) leaves 500px of horizontal
+        # slack (crop_w=1000 < img_w=1500) for the crop to actually shift - a square
+        # crop of a square image would have zero slack on either axis and could
+        # never be off-center regardless of face position, so this must be
+        # rectangular for the test to be satisfiable at all.
+        faces = [FaceBox(50, 450, 100, 100)]  # face in the left portion of the frame
+        box = C.formula_crop(1500, 1000, inner_ratio=1.0, faces=faces, symmetric=False)
+        x0, y0, x1, y1 = box.to_pixels(1500, 1000)
         crop_center_x = (x0 + x1) / 2
-        self.assertLess(crop_center_x, 500)
+        self.assertLess(crop_center_x, 750)  # not centered on the full 1500-wide image
 
     def test_crop_stays_within_source_bounds(self):
         faces = [FaceBox(0, 0, 20, 20)]
