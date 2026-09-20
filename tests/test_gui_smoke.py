@@ -130,5 +130,60 @@ class EscalationWorkerTests(unittest.TestCase):
             self.assertEqual(errors, ["api down"])
 
 
+from gui.review_gallery import PhotoCard, ReviewGallery  # noqa: E402
+
+
+def _make_job(name="a.jpg", keep=False):
+    job = P.PhotoJob(src_path=f"/tmp/{name}", filename=name, shape="square",
+                      canvas_long=600, apply_filter=True)
+    job.rendered = Image.new("L", (600, 600), 128)
+    job.keep = keep
+    return job
+
+
+class PhotoCardTests(unittest.TestCase):
+    def test_card_holds_job_and_keep_checkbox_defaults_unchecked(self):
+        card = PhotoCard(_make_job())
+        self.assertFalse(card.keep_checkbox.isChecked())
+
+    def test_toggling_checkbox_updates_job_keep_flag(self):
+        card = PhotoCard(_make_job())
+        card.keep_checkbox.setChecked(True)
+        self.assertTrue(card.job.keep)
+
+    def test_escalate_button_emits_signal_with_job(self):
+        job = _make_job()
+        card = PhotoCard(job)
+        received = []
+        card.escalate_requested.connect(lambda j: received.append(j))
+        card._on_escalate_clicked()
+        self.assertEqual(received, [job])
+
+
+class ReviewGalleryTests(unittest.TestCase):
+    def test_add_job_creates_a_card(self):
+        gallery = ReviewGallery()
+        job = _make_job("a.jpg")
+        gallery.add_job(job)
+        self.assertIn(job.src_path, gallery.cards)
+
+    def test_kept_jobs_returns_only_checked_ones(self):
+        gallery = ReviewGallery()
+        job_a, job_b = _make_job("a.jpg"), _make_job("b.jpg")
+        gallery.add_job(job_a)
+        gallery.add_job(job_b)
+        gallery.cards[job_a.src_path].keep_checkbox.setChecked(True)
+        kept = gallery.kept_jobs()
+        self.assertEqual(kept, [job_a])
+
+    def test_update_job_refreshes_existing_card(self):
+        gallery = ReviewGallery()
+        job = _make_job("a.jpg")
+        gallery.add_job(job)
+        job.rendered = Image.new("L", (600, 600), 200)
+        gallery.update_job(job)
+        self.assertIs(gallery.cards[job.src_path].job, job)
+
+
 if __name__ == "__main__":
     unittest.main()
