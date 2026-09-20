@@ -4,7 +4,7 @@ import os
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
+    QCheckBox, QComboBox, QFileDialog, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
@@ -17,8 +17,8 @@ class InputPanel(QWidget):
         self.setAcceptDrops(True)
 
         self.folder_edit = QLineEdit(initial_settings.last_input_folder)
-        browse_button = QPushButton("Browse...")
-        browse_button.clicked.connect(self._on_browse_clicked)
+        self.browse_button = QPushButton("Browse...")
+        self.browse_button.clicked.connect(self._on_browse_clicked)
 
         self.shape_combo = QComboBox()
         self.shape_combo.addItems(["square", "portrait", "landscape"])
@@ -31,25 +31,31 @@ class InputPanel(QWidget):
         self.filter_checkbox = QCheckBox("Apply HP5 filter")
         self.filter_checkbox.setChecked(initial_settings.apply_filter)
 
-        process_button = QPushButton("Process Folder")
-        process_button.clicked.connect(self._on_process_clicked)
+        self.process_button = QPushButton("Process Folder")
+        self.process_button.setProperty("primary", True)
+        self.process_button.clicked.connect(self._on_process_clicked)
 
         folder_row = QHBoxLayout()
         folder_row.addWidget(QLabel("Folder:"))
         folder_row.addWidget(self.folder_edit)
-        folder_row.addWidget(browse_button)
+        folder_row.addWidget(self.browse_button)
 
-        controls_row = QHBoxLayout()
-        controls_row.addWidget(QLabel("Shape:"))
-        controls_row.addWidget(self.shape_combo)
-        controls_row.addWidget(QLabel("Canvas long edge:"))
-        controls_row.addWidget(self.canvas_spin)
-        controls_row.addWidget(self.filter_checkbox)
-        controls_row.addWidget(process_button)
+        self.settings_group = QGroupBox("Run settings")
+        settings_row = QHBoxLayout(self.settings_group)
+        settings_row.addWidget(QLabel("Shape:"))
+        settings_row.addWidget(self.shape_combo)
+        settings_row.addWidget(QLabel("Canvas long edge:"))
+        settings_row.addWidget(self.canvas_spin)
+        settings_row.addWidget(self.filter_checkbox)
+
+        process_row = QHBoxLayout()
+        process_row.addStretch()
+        process_row.addWidget(self.process_button)
 
         layout = QVBoxLayout(self)
         layout.addLayout(folder_row)
-        layout.addLayout(controls_row)
+        layout.addWidget(self.settings_group)
+        layout.addLayout(process_row)
 
     def current_folder(self) -> str:
         return self.folder_edit.text()

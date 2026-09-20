@@ -10,7 +10,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from PIL import Image, ImageOps, ImageQt
 from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox, QVBoxLayout, QWidget
+
+# Vertical space reserved for the button box, title bar, and window chrome so
+# the dialog's own OK/Cancel buttons never get pushed off-screen on a tall
+# (portrait) source photo.
+_CHROME_ALLOWANCE = 150
 
 from crop import CropBox
 
@@ -94,7 +99,11 @@ class CropEditorDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(f"Manual crop - {job.filename}")
         source = ImageOps.exif_transpose(Image.open(job.src_path)).convert("RGB")
-        scale = min(1.0, self.MAX_DISPLAY_DIM / max(source.width, source.height))
+        screen = QApplication.primaryScreen()
+        available = screen.availableGeometry() if screen is not None else QRect(0, 0, self.MAX_DISPLAY_DIM, self.MAX_DISPLAY_DIM)
+        max_w = min(self.MAX_DISPLAY_DIM, available.width() - _CHROME_ALLOWANCE)
+        max_h = min(self.MAX_DISPLAY_DIM, available.height() - _CHROME_ALLOWANCE)
+        scale = min(1.0, max_w / source.width, max_h / source.height)
         if scale < 1.0:
             img = source.resize(
                 (max(1, round(source.width * scale)), max(1, round(source.height * scale))),

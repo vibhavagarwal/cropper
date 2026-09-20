@@ -5,6 +5,7 @@ import json
 
 from openai import OpenAI
 
+import api_key_store as aks
 from .base import CropProvider, CropDecision
 
 _SCHEMA = {
@@ -32,7 +33,7 @@ _PRICES = {
 
 class OpenAICropProvider(CropProvider):
     def __init__(self, client=None):
-        self._client = client if client is not None else OpenAI()
+        self._client = client if client is not None else OpenAI(api_key=aks.resolve_api_key())
 
     @property
     def name(self) -> str:

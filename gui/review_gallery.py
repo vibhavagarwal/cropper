@@ -6,6 +6,8 @@ from PySide6.QtWidgets import (
     QCheckBox, QGridLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
 )
 
+_EMPTY_STATE_TEXT = "No photos yet — choose a folder and click Process Folder to get started."
+
 
 def _pil_to_pixmap(pil_image, max_size=220):
     thumb = pil_image.copy()
@@ -16,10 +18,16 @@ def _pil_to_pixmap(pil_image, max_size=220):
     return QPixmap.fromImage(qimage)
 
 
+def _escalation_eligible(job) -> bool:
+    return bool(job.triage_decision and job.triage_decision.escalate) and job.crop_decision is None
+
+
 class PhotoCard(QWidget):
     escalate_requested = Signal(object)
     manual_crop_requested = Signal(object)
     details_requested = Signal(object)
+    escalate_selection_changed = Signal()
+    keep_selection_changed = Signal()
 
     def __init__(self, job):
         super().__init__()
@@ -31,8 +39,12 @@ class PhotoCard(QWidget):
         self.keep_checkbox.toggled.connect(self._on_keep_toggled)
 
         escalate_button = QPushButton("Escalate")
-        escalate_button.setEnabled(bool(job.triage_decision and job.triage_decision.escalate))
+        escalate_button.setEnabled(_escalation_eligible(job))
         escalate_button.clicked.connect(self._on_escalate_clicked)
+
+        self.escalate_checkbox = QCheckBox("Select for escalation")
+        self.escalate_checkbox.setEnabled(_escalation_eligible(job))
+        self.escalate_checkbox.toggled.connect(lambda _checked: self.escalate_selection_changed.emit())
 
         crop_button = QPushButton("Manual Crop")
         crop_button.clicked.connect(lambda: self.manual_crop_requested.emit(self.job))
@@ -44,6 +56,7 @@ class PhotoCard(QWidget):
         layout.addWidget(self.thumb_label)
         layout.addWidget(self.status_label)
         layout.addWidget(self.keep_checkbox)
+        layout.addWidget(self.escalate_checkbox)
         layout.addWidget(escalate_button)
         layout.addWidget(crop_button)
         layout.addWidget(details_button)
@@ -52,6 +65,7 @@ class PhotoCard(QWidget):
 
     def _on_keep_toggled(self, checked):
         self.job.keep = checked
+        self.keep_selection_changed.emit()
 
     def _on_escalate_clicked(self):
         self.escalate_requested.emit(self.job)
@@ -61,15 +75,21 @@ class PhotoCard(QWidget):
         self._refresh_visuals()
 
     def _refresh_visuals(self):
+        eligible = _escalation_eligible(self.job)
+        self.escalate_checkbox.setEnabled(eligible)
+        if not eligible and self.escalate_checkbox.isChecked():
+            self.escalate_checkbox.setChecked(False)
         if self.job.error:
             self.status_label.setText(f"FAILED: {self.job.error}")
             return
         if self.job.rendered is not None:
             self.thumb_label.setPixmap(_pil_to_pixmap(self.job.rendered))
         if self.job.crop_decision is not None:
+            cost = getattr(self.job, "last_cost", None)
+            cost_suffix = f", ${cost:.6f}" if cost is not None else ""
             self.status_label.setText(
                 f"escalated ({self.job.crop_decision.tier}, "
-                f"confidence {self.job.crop_decision.confidence:.2f})"
+                f"confidence {self.job.crop_decision.confidence:.2f}{cost_suffix})"
             )
         elif self.job.triage_decision and self.job.triage_decision.escalate:
             self.status_label.setText("flagged for escalation")
@@ -77,15 +97,32 @@ class PhotoCard(QWidget):
             self.status_label.setText("formula crop")
 
 
-class ReviewGallery(QScrollArea):
-    def __init__(self):
+class ReviewGallery(QWidget):
+    def __init__(self, decision_log=None):
         super().__init__()
         self.cards = {}
+        self._decision_log = decision_log
+        self._next_index = 0
+
+        self.cost_label = QLabel("Running cost: $0.000000")
+        self.empty_label = QLabel(_EMPTY_STATE_TEXT)
+
         self._container = QWidget()
         self._grid = QGridLayout(self._container)
-        self.setWidget(self._container)
-        self.setWidgetResizable(True)
-        self._next_index = 0
+        self._scroll = QScrollArea()
+        self._scroll.setWidget(self._container)
+        self._scroll.setWidgetResizable(True)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.cost_label)
+        layout.addWidget(self.empty_label)
+        layout.addWidget(self._scroll)
+
+        self._update_empty_state()
+
+    def refresh_cost(self):
+        if self._decision_log is not None:
+            self.cost_label.setText(f"Running cost: ${self._decision_log.running_cost:.6f}")
 
     def add_job(self, job):
         card = PhotoCard(job)
@@ -93,6 +130,7 @@ class ReviewGallery(QScrollArea):
         row, col = divmod(self._next_index, 4)
         self._grid.addWidget(card, row, col)
         self._next_index += 1
+        self._update_empty_state()
 
     def update_job(self, job):
         card = self.cards.get(job.src_path)
@@ -102,11 +140,27 @@ class ReviewGallery(QScrollArea):
     def kept_jobs(self):
         return [card.job for card in self.cards.values() if card.keep_checkbox.isChecked()]
 
+    def has_unsaved_kept_work(self) -> bool:
+        return any(card.keep_checkbox.isChecked() for card in self.cards.values())
+
+    def selected_for_escalation(self):
+        return [card.job for card in self.cards.values() if card.escalate_checkbox.isChecked()]
+
     def remove_job(self, src_path):
         card = self.cards.pop(src_path, None)
         if card is not None:
             self._grid.removeWidget(card)
             card.deleteLater()
+            self._reflow()
+        self._update_empty_state()
+
+    def _reflow(self):
+        self._next_index = 0
+        for card in self.cards.values():
+            self._grid.removeWidget(card)
+            row, col = divmod(self._next_index, 4)
+            self._grid.addWidget(card, row, col)
+            self._next_index += 1
 
     def clear(self):
         for card in self.cards.values():
@@ -114,3 +168,7 @@ class ReviewGallery(QScrollArea):
             card.deleteLater()
         self.cards = {}
         self._next_index = 0
+        self._update_empty_state()
+
+    def _update_empty_state(self):
+        self.empty_label.setVisible(len(self.cards) == 0)

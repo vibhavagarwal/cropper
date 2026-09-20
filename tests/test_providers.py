@@ -88,6 +88,14 @@ class OpenAICropProviderTests(unittest.TestCase):
         self.assertEqual(kwargs["text"]["format"]["type"], "json_schema")
         self.assertTrue(kwargs["text"]["format"]["strict"])
 
+    def test_constructs_client_with_resolved_api_key_when_none_injected(self):
+        from unittest.mock import patch, MagicMock
+        with patch("providers.openai_provider.aks.resolve_api_key", return_value="resolved-key"), \
+                patch("providers.openai_provider.OpenAI") as mock_openai_cls:
+            mock_openai_cls.return_value = MagicMock()
+            OpenAICropProvider()
+            mock_openai_cls.assert_called_once_with(api_key="resolved-key")
+
 
 if __name__ == "__main__":
     unittest.main()

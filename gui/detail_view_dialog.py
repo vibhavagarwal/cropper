@@ -42,7 +42,7 @@ def render_detection_overlay(job):
 
 
 class DetailViewDialog(QDialog):
-    def __init__(self, job, parent=None):
+    def __init__(self, job, decision_log=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Details - {job.filename}")
         overlay = render_detection_overlay(job)
@@ -65,8 +65,15 @@ class DetailViewDialog(QDialog):
                 f"AI decision: tier={job.crop_decision.tier}, "
                 f"confidence={job.crop_decision.confidence:.2f}"
             )
-        info_label = QLabel("\n".join(info_lines))
+        if decision_log is not None:
+            total_cost = sum(
+                r.cost for r in decision_log.records
+                if r.photo_name == job.filename and r.escalated
+            )
+            if total_cost:
+                info_lines.append(f"Total cost: ${total_cost:.6f}")
+        self.info_label = QLabel("\n".join(info_lines))
 
         layout = QVBoxLayout(self)
         layout.addWidget(image_label)
-        layout.addWidget(info_label)
+        layout.addWidget(self.info_label)
