@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+
+.venv/
+venv/
+env/
+
+.claude/worktrees/
+.superpowers/
+
+.vscode/
+.idea/
+*.swp
+
+.DS_Store
+Thumbs.db
