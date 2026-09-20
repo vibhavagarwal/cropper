@@ -3,6 +3,13 @@ import sys
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# MainWindow constructs a real OpenAICropProvider (which wraps openai.OpenAI()).
+# The OpenAI client raises at construction time if no credentials are present
+# at all, even though nothing in this test suite ever issues a live request
+# (all escalation tests substitute a fake provider). Give it a harmless
+# placeholder so headless/CI runs without OPENAI_API_KEY set don't crash on
+# MainWindow() construction alone.
+os.environ.setdefault("OPENAI_API_KEY", "sk-test-placeholder-not-a-real-key")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -310,6 +317,68 @@ class SaveActionTests(unittest.TestCase):
             job = _make_job("a.jpg", keep=True)
             save_kept_jobs([job], out_dir)
             self.assertTrue(os.path.isdir(out_dir))
+
+
+class MainWindowWiringTests(unittest.TestCase):
+    def test_default_output_folder_is_input_folder_slash_out(self):
+        from gui.main_window import MainWindow
+        window = MainWindow()
+        window.input_panel.folder_edit.setText("/tmp/photos")
+        self.assertEqual(window.output_folder(), "/tmp/photos/out")
+
+    def test_processing_a_folder_populates_the_gallery(self):
+        from gui.main_window import MainWindow
+        with tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            window = MainWindow()
+            window.input_panel.folder_edit.setText(d)
+            window.input_panel.shape_combo.setCurrentText("square")
+            window.input_panel.canvas_spin.setValue(600)
+            window._start_processing(d, "square", 600, True)
+            window._worker.wait(10000)
+            _app.processEvents()
+            self.assertEqual(len(window.gallery.cards), 1)
+
+    def test_save_writes_only_kept_jobs(self):
+        from gui.main_window import MainWindow
+        with tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            window = MainWindow()
+            window._start_processing(d, "square", 600, True)
+            window._worker.wait(10000)
+            _app.processEvents()
+            list(window.gallery.cards.values())[0].keep_checkbox.setChecked(True)
+            window._on_save_clicked()
+            out_dir = os.path.join(d, "out")
+            self.assertTrue(os.path.isdir(out_dir))
+            self.assertEqual(len(os.listdir(out_dir)), 1)
+
+    def test_low_confidence_cheap_tier_automatically_escalates_to_strong(self):
+        from gui.main_window import MainWindow
+        with tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            window = MainWindow()
+            window._start_processing(d, "square", 600, True)
+            window._worker.wait(10000)
+            _app.processEvents()
+            job = list(window.gallery.cards.values())[0].job
+
+            calls = []
+
+            class FakeProvider:
+                name = "openai"
+
+                def price_per_million_tokens(self, tier):
+                    return (1.0, 1.0)
+
+                def request_crop(self, image_bytes, detection_metadata, inner_ratio, tier):
+                    calls.append(tier)
+                    confidence = 0.3 if tier == "cheap" else 0.95
+                    return CropDecision(crop_box=(0.0, 0.0, 1.0, 1.0), confidence=confidence, tier=tier)
+
+            window.provider = FakeProvider()
+            window._run_escalation_worker(job, "cheap")
+            self.assertEqual(calls, ["cheap", "strong"])
 
 
 if __name__ == "__main__":
