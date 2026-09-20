@@ -227,5 +227,28 @@ class CropEditorDialogTests(unittest.TestCase):
         self.assertIsNone(dialog.result_crop_box())
 
 
+from gui.escalation_dialog import EscalationConfirmDialog  # noqa: E402
+
+
+class EscalationConfirmDialogTests(unittest.TestCase):
+    def test_shows_worst_case_cost_and_defaults_unconfirmed(self):
+        class FakeProvider:
+            def price_per_million_tokens(self, tier):
+                return (10.0, 50.0)
+
+        dialog = EscalationConfirmDialog(FakeProvider(), num_photos=3)
+        self.assertFalse(dialog.confirmed())
+        self.assertIn("$", dialog.cost_label.text())
+
+    def test_accept_marks_confirmed(self):
+        class FakeProvider:
+            def price_per_million_tokens(self, tier):
+                return (10.0, 50.0)
+
+        dialog = EscalationConfirmDialog(FakeProvider(), num_photos=1)
+        dialog._on_accept()
+        self.assertTrue(dialog.confirmed())
+
+
 if __name__ == "__main__":
     unittest.main()
