@@ -217,5 +217,15 @@ class DetailViewDialogTests(unittest.TestCase):
         self.assertIsNotNone(dialog)
 
 
+from gui.crop_editor_dialog import CropEditorDialog  # noqa: E402
+
+
+class CropEditorDialogTests(unittest.TestCase):
+    def test_dialog_constructs_and_starts_with_no_result(self):
+        job = _make_job("a.jpg")
+        dialog = CropEditorDialog(job, inner_ratio=1.0)
+        self.assertIsNone(dialog.result_crop_box())
+
+
 if __name__ == "__main__":
     unittest.main()
