@@ -1,7 +1,16 @@
 # Post-v1 cleanup: UI/UX pass + remaining spec gaps
 
-Status: handoff prepared 2026-09-20, not yet grilled. Written for a fresh session to pick up
-via the `grilling` skill — read this whole file before asking the first question.
+Status: grilled 2026-09-20. Resolved into implementation-ready tickets under
+`.scratch/post-v1-cleanup/issues/`:
+- `01-ui-ux-cleanup.md` — section 1, full scope resolved
+- `02-escalate-selected.md` — section 2 item 1 (spec's "escalate all flagged" reworked to
+  "escalate selected" per user's explicit correction during grilling)
+- `03-api-key-keyring.md` — section 2 item 2
+
+Section 2 items 3-8 (deferred features + tech debt, see below) were explicitly triaged as
+**out of scope** for this round and left parked — not re-litigated, just confirmed still
+correct. This file remains the historical record of what was open before grilling; the issue
+files are the source of truth for what to build.
 
 ## Context
 
