@@ -1,5 +1,7 @@
 """Input panel: folder picker, drag-and-drop, and per-run controls (shape,
 canvas size, filter on/off). Emits process_requested when the user starts a run."""
+import os
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
@@ -72,5 +74,7 @@ class InputPanel(QWidget):
     def dropEvent(self, event):
         urls = event.mimeData().urls()
         if urls:
-            self.folder_edit.setText(urls[0].toLocalFile())
+            path = urls[0].toLocalFile()
+            if os.path.isdir(path):
+                self.folder_edit.setText(path)
         event.acceptProposedAction()

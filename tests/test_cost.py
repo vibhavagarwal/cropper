@@ -19,11 +19,12 @@ class CostTests(unittest.TestCase):
         self.assertGreater(cheap, 0)
         self.assertGreater(strong, cheap)
 
-    def test_worst_case_batch_cost_assumes_strong_tier_for_every_photo(self):
+    def test_worst_case_batch_cost_assumes_both_tiers_for_every_photo(self):
         provider = FakeProvider()
-        single_strong = C.estimate_call_cost(provider, "strong")
+        cheap = C.estimate_call_cost(provider, "cheap")
+        strong = C.estimate_call_cost(provider, "strong")
         batch = C.estimate_worst_case_batch_cost(provider, 5)
-        self.assertAlmostEqual(batch, 5 * single_strong)
+        self.assertAlmostEqual(batch, 5 * (cheap + strong))
 
     def test_zero_flagged_photos_costs_nothing(self):
         provider = FakeProvider()

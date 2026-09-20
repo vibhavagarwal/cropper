@@ -20,7 +20,7 @@ class EscalationConfirmDialog(QDialog):
         worst_case = estimate_worst_case_batch_cost(provider, num_photos)
         self.cost_label = QLabel(
             f"Escalating {num_photos} photo(s) could cost up to ${worst_case:.4f} "
-            "(worst case, assumes every photo needs the stronger tier)."
+            "(worst case, assumes every photo needs both the cheap and strong tiers)."
         )
 
         buttons = QDialogButtonBox(

@@ -11,6 +11,9 @@ def save_kept_jobs(jobs, output_folder: str) -> list:
             continue
         stem = os.path.splitext(job.filename)[0]
         dst = os.path.join(output_folder, f"{stem}_cropper.jpg")
-        job.rendered.convert("L").save(dst, quality=92, optimize=True)
-        written.append(dst)
+        try:
+            job.rendered.convert("L").save(dst, quality=92, optimize=True)
+            written.append(dst)
+        except OSError:
+            continue
     return written

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from settings import AppSettings
 from decision_log import DecisionLog, DecisionRecord
 from providers.openai_provider import OpenAICropProvider
+import hp5_emulate as H
 import pipeline as P
 
 from cost_panel import CostPanel
@@ -46,7 +47,10 @@ class MainWindow(QMainWindow):
         self.decision_log_path = decision_log_path or (Path.home() / ".cropper" / "decision_log.jsonl")
         self.decision_log = DecisionLog(self.decision_log_path)
 
-        self.provider = OpenAICropProvider()
+        try:
+            self.provider = OpenAICropProvider()
+        except Exception:
+            self.provider = None
         self._output_override = None
         self._worker = None
 
@@ -85,6 +89,9 @@ class MainWindow(QMainWindow):
             self._output_override = folder
 
     def _start_processing(self, folder, shape, canvas_long, apply_filter):
+        if self._worker is not None and self._worker.isRunning():
+            self.statusBar().showMessage("Already processing a folder — please wait for it to finish.", 5000)
+            return
         # Keep the input panel's folder field authoritative for output_folder()
         # even when a caller (e.g. a test, or a future re-run action) invokes
         # this directly instead of going through the panel's own signal.
@@ -98,6 +105,7 @@ class MainWindow(QMainWindow):
 
         self._worker = ProcessFolderWorker(folder, shape, canvas_long, apply_filter)
         self._worker.photo_ready.connect(self._on_photo_ready)
+        self._worker.finished_all.connect(lambda: self.statusBar().showMessage("Processing complete.", 3000))
         self._worker.start()
 
     def _on_photo_ready(self, job):
@@ -108,6 +116,10 @@ class MainWindow(QMainWindow):
         card.details_requested.connect(self._on_details_requested)
 
     def _on_escalate_requested(self, job):
+        if self.provider is None:
+            self.statusBar().showMessage(
+                "Escalation unavailable: no OpenAI API key configured (set OPENAI_API_KEY).", 5000)
+            return
         confirm = EscalationConfirmDialog(self.provider, num_photos=1, parent=self)
         confirm.exec()
         if not confirm.confirmed():
@@ -145,9 +157,8 @@ class MainWindow(QMainWindow):
             self._run_escalation_worker(job, "strong")
 
     def _on_manual_crop_requested(self, job):
-        inner_ratio = (job.crop_box.x1 - job.crop_box.x0) / (job.crop_box.y1 - job.crop_box.y0) \
-            if job.crop_box else 1.0
-        dialog = CropEditorDialog(job, inner_ratio=inner_ratio, parent=self)
+        lay = H.layout(job.shape, job.canvas_long)
+        dialog = CropEditorDialog(job, inner_ratio=lay["inner_ratio"], parent=self)
         dialog.exec()
         new_box = dialog.result_crop_box()
         if new_box is not None:
@@ -163,4 +174,11 @@ class MainWindow(QMainWindow):
         out_folder = self.output_folder()
         self.settings.last_output_folder = out_folder
         self.settings.save(self.settings_path)
-        save_kept_jobs(kept, out_folder)
+        written = save_kept_jobs(kept, out_folder)
+        attempted = [j for j in kept if not j.error and j.rendered is not None]
+        if len(written) < len(attempted):
+            self.statusBar().showMessage(
+                f"Saved {len(written)} of {len(attempted)} photo(s) — "
+                f"{len(attempted) - len(written)} failed (check disk space/permissions).", 8000)
+        else:
+            self.statusBar().showMessage(f"Saved {len(written)} photo(s) to {out_folder}.", 5000)

@@ -2,6 +2,14 @@
 blob, symmetry score) and, if escalated, the AI's confidence and tier. Not
 shown in the main gallery grid by default - opened on demand from a card's
 Details button."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
+import hp5_emulate as H
+from crop import CropBox
+
 from PIL import ImageDraw
 
 from PySide6.QtGui import QImage, QPixmap
@@ -12,12 +20,24 @@ def render_detection_overlay(job):
     base = job.rendered.convert("RGB").copy()
     draw = ImageDraw.Draw(base)
     if job.detection is not None:
-        scale_x = base.width / (job.detection.saliency.heatmap.shape[1] or base.width)
-        scale_y = base.height / (job.detection.saliency.heatmap.shape[0] or base.height)
+        source_h, source_w = job.detection.saliency.heatmap.shape
+        crop_box = job.crop_box if job.crop_box is not None else CropBox(0.0, 0.0, 1.0, 1.0)
+        crop_w_frac = crop_box.x1 - crop_box.x0
+        crop_h_frac = crop_box.y1 - crop_box.y0
+        lay = H.layout(job.shape, job.canvas_long)
+        border = lay["border"]
+        inner_w, inner_h = lay["inner"]
         for face in job.detection.faces:
-            x0, y0 = face.x * scale_x, face.y * scale_y
-            x1, y1 = (face.x + face.w) * scale_x, (face.y + face.h) * scale_y
-            draw.rectangle([x0, y0, x1, y1], outline=(255, 0, 0), width=3)
+            fx0, fy0 = face.x / source_w, face.y / source_h
+            fx1, fy1 = (face.x + face.w) / source_w, (face.y + face.h) / source_h
+            rx0 = min(1.0, max(0.0, (fx0 - crop_box.x0) / crop_w_frac))
+            ry0 = min(1.0, max(0.0, (fy0 - crop_box.y0) / crop_h_frac))
+            rx1 = min(1.0, max(0.0, (fx1 - crop_box.x0) / crop_w_frac))
+            ry1 = min(1.0, max(0.0, (fy1 - crop_box.y0) / crop_h_frac))
+            x0, y0 = border + rx0 * inner_w, border + ry0 * inner_h
+            x1, y1 = border + rx1 * inner_w, border + ry1 * inner_h
+            if x1 > x0 and y1 > y0:
+                draw.rectangle([x0, y0, x1, y1], outline=(255, 0, 0), width=3)
     return base
 
 

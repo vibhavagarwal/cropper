@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from PIL import ImageQt
+from PIL import Image, ImageOps, ImageQt
 from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout, QWidget
@@ -88,10 +88,20 @@ class _CropCanvas(QWidget):
 
 
 class CropEditorDialog(QDialog):
+    MAX_DISPLAY_DIM = 1200
+
     def __init__(self, job, inner_ratio: float, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Manual crop - {job.filename}")
-        img = job.rendered.convert("RGB")
+        source = ImageOps.exif_transpose(Image.open(job.src_path)).convert("RGB")
+        scale = min(1.0, self.MAX_DISPLAY_DIM / max(source.width, source.height))
+        if scale < 1.0:
+            img = source.resize(
+                (max(1, round(source.width * scale)), max(1, round(source.height * scale))),
+                Image.LANCZOS,
+            )
+        else:
+            img = source
         start_w = min(img.width, round(img.height * inner_ratio))
         self.state = CropBoxState(
             img_w=img.width, img_h=img.height, ratio=inner_ratio,

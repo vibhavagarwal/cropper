@@ -3,13 +3,6 @@ import sys
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-# MainWindow constructs a real OpenAICropProvider (which wraps openai.OpenAI()).
-# The OpenAI client raises at construction time if no credentials are present
-# at all, even though nothing in this test suite ever issues a live request
-# (all escalation tests substitute a fake provider). Give it a harmless
-# placeholder so headless/CI runs without OPENAI_API_KEY set don't crash on
-# MainWindow() construction alone.
-os.environ.setdefault("OPENAI_API_KEY", "sk-test-placeholder-not-a-real-key")
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -68,6 +61,7 @@ from PIL import Image
 
 from gui.workers import EscalationWorker, ProcessFolderWorker  # noqa: E402
 from providers.base import CropDecision  # noqa: E402
+import hp5_emulate as H  # noqa: E402
 import pipeline as P  # noqa: E402
 
 
@@ -229,9 +223,31 @@ from gui.crop_editor_dialog import CropEditorDialog  # noqa: E402
 
 class CropEditorDialogTests(unittest.TestCase):
     def test_dialog_constructs_and_starts_with_no_result(self):
-        job = _make_job("a.jpg")
-        dialog = CropEditorDialog(job, inner_ratio=1.0)
-        self.assertIsNone(dialog.result_crop_box())
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "a.jpg")
+            Image.new("RGB", (800, 600), (128, 128, 128)).save(src)
+            job = P.PhotoJob(src_path=src, filename="a.jpg", shape="square",
+                              canvas_long=600, apply_filter=True)
+            job.rendered = Image.new("L", (600, 600), 128)
+            dialog = CropEditorDialog(job, inner_ratio=1.0)
+            self.assertIsNone(dialog.result_crop_box())
+
+    def test_manual_crop_uses_correct_ratio_for_non_square_source(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "a.jpg")
+            # 4000x3000 source, square (1:1) target shape -> true inner_ratio is 1.0,
+            # NOT 0.75 (which is what a buggy fraction-based computation would give)
+            Image.new("RGB", (4000, 3000), (100, 150, 200)).save(src)
+            job = P.process_photo(src, shape="square", canvas_long=600, apply_filter=False)
+            self.assertIsNone(job.error)
+            lay_ratio = H.layout(job.shape, job.canvas_long)["inner_ratio"]
+            self.assertAlmostEqual(lay_ratio, 1.0, places=3)
+            dialog = CropEditorDialog(job, inner_ratio=lay_ratio)
+            self.assertAlmostEqual(dialog.state.ratio, 1.0, places=3)
+            # the dialog's displayed image must preserve the source's aspect ratio
+            # (4000x3000 = 4:3), not be squashed to some other shape
+            self.assertAlmostEqual(dialog._canvas.pixmap.width() / dialog._canvas.pixmap.height(),
+                                    4000 / 3000, places=2)
 
 
 from gui.escalation_dialog import EscalationConfirmDialog  # noqa: E402
@@ -330,6 +346,18 @@ def _make_window(config_dir):
 
 
 class MainWindowWiringTests(unittest.TestCase):
+    def test_main_window_constructs_without_openai_api_key(self):
+        from gui.main_window import MainWindow
+        old_key = os.environ.pop("OPENAI_API_KEY", None)
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                window = MainWindow(settings_path=_Path(d) / "settings.json",
+                                     decision_log_path=_Path(d) / "decision_log.jsonl")
+                self.assertIsNone(window.provider)
+        finally:
+            if old_key is not None:
+                os.environ["OPENAI_API_KEY"] = old_key
+
     def test_default_output_folder_is_input_folder_slash_out(self):
         with tempfile.TemporaryDirectory() as config_dir:
             window = _make_window(config_dir)

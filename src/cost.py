@@ -19,4 +19,8 @@ def estimate_call_cost(provider, tier: str) -> float:
 
 
 def estimate_worst_case_batch_cost(provider, num_flagged_photos: int) -> float:
-    return num_flagged_photos * estimate_call_cost(provider, "strong")
+    """Worst case per photo: the cheap tier always runs first, and the strong
+    tier may also run on top (automatic escalation ladder) - budget for both."""
+    return num_flagged_photos * (
+        estimate_call_cost(provider, "cheap") + estimate_call_cost(provider, "strong")
+    )
