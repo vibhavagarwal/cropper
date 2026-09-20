@@ -201,9 +201,12 @@ class DetectionOverlayTests(unittest.TestCase):
         )
         overlay = render_detection_overlay(job)
         self.assertEqual(overlay.size, job.rendered.size)
-        # a pixel on the drawn face-box border should differ from plain mid-gray background
+        # Face (10,10,40,40) in a 600x600 source maps through layout("square", 600)
+        # (border=12px, inner=576px) to a drawn box at roughly x:[21,60], y:[21,60]
+        # on the rendered canvas - not (10,10)-(50,50), because the overlay now
+        # correctly accounts for the border offset and inner-canvas scaling.
         overlay_arr = np.asarray(overlay.convert("RGB"))
-        self.assertFalse((overlay_arr[10, 10:50] == overlay_arr[10, 10, 0]).all())
+        self.assertFalse((overlay_arr[30, 15:65] == overlay_arr[30, 15, 0]).all())
 
 
 class DetailViewDialogTests(unittest.TestCase):
