@@ -250,5 +250,37 @@ class EscalationConfirmDialogTests(unittest.TestCase):
         self.assertTrue(dialog.confirmed())
 
 
+import tempfile
+from pathlib import Path as _Path
+
+from gui.cost_panel import CostPanel  # noqa: E402
+import decision_log as DL  # noqa: E402
+
+
+class CostPanelTests(unittest.TestCase):
+    def test_refresh_shows_running_total_and_history_rows(self):
+        with tempfile.TemporaryDirectory() as d:
+            log = DL.DecisionLog(_Path(d) / "log.jsonl")
+            log.add(DL.DecisionRecord(photo_name="a.jpg", escalated=True, tier="cheap",
+                                       provider="openai", cost=0.001, confidence=0.9,
+                                       timestamp=1.0))
+            panel = CostPanel(log)
+            panel.refresh()
+            self.assertIn("0.001", panel.total_label.text())
+            self.assertEqual(panel.history_list.count(), 1)
+
+    def test_refresh_after_new_record_updates_total(self):
+        with tempfile.TemporaryDirectory() as d:
+            log = DL.DecisionLog(_Path(d) / "log.jsonl")
+            panel = CostPanel(log)
+            panel.refresh()
+            log.add(DL.DecisionRecord(photo_name="b.jpg", escalated=True, tier="strong",
+                                       provider="openai", cost=0.05, confidence=0.3,
+                                       timestamp=2.0))
+            panel.refresh()
+            self.assertIn("0.05", panel.total_label.text())
+            self.assertEqual(panel.history_list.count(), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
