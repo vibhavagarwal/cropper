@@ -282,5 +282,35 @@ class CostPanelTests(unittest.TestCase):
             self.assertEqual(panel.history_list.count(), 1)
 
 
+from gui.save_action import save_kept_jobs  # noqa: E402
+
+
+class SaveActionTests(unittest.TestCase):
+    def test_saves_only_kept_jobs_to_output_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            out_dir = os.path.join(d, "out")
+            job_a = _make_job("a.jpg", keep=True)
+            job_b = _make_job("b.jpg", keep=False)
+            written = save_kept_jobs([job_a, job_b], out_dir)
+            self.assertEqual(len(written), 1)
+            self.assertTrue(os.path.exists(written[0]))
+            self.assertIn("a", os.path.basename(written[0]))
+
+    def test_skips_jobs_with_errors_even_if_marked_keep(self):
+        with tempfile.TemporaryDirectory() as d:
+            out_dir = os.path.join(d, "out")
+            job = _make_job("a.jpg", keep=True)
+            job.error = "boom"
+            written = save_kept_jobs([job], out_dir)
+            self.assertEqual(written, [])
+
+    def test_creates_output_folder_if_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            out_dir = os.path.join(d, "does", "not", "exist", "yet")
+            job = _make_job("a.jpg", keep=True)
+            save_kept_jobs([job], out_dir)
+            self.assertTrue(os.path.isdir(out_dir))
+
+
 if __name__ == "__main__":
     unittest.main()
