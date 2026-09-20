@@ -53,5 +53,82 @@ class InputPanelTests(unittest.TestCase):
         self.assertEqual(panel.current_folder(), "C:/some/folder")
 
 
+import tempfile
+import time
+
+import numpy as np
+from PIL import Image
+
+from gui.workers import EscalationWorker, ProcessFolderWorker  # noqa: E402
+from providers.base import CropDecision  # noqa: E402
+import pipeline as P  # noqa: E402
+
+
+def _write_synthetic(path, seed=0):
+    rng = np.random.default_rng(seed)
+    arr = rng.integers(0, 256, size=(200, 300, 3), dtype=np.uint8)
+    Image.fromarray(arr).save(path, quality=95)
+
+
+class ProcessFolderWorkerTests(unittest.TestCase):
+    def test_worker_emits_one_signal_per_photo_then_finishes(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            _write_synthetic(os.path.join(d, "b.jpg"), seed=2)
+
+            received = []
+            worker = ProcessFolderWorker(d, "square", 600, True)
+            worker.photo_ready.connect(lambda job: received.append(job))
+            done = []
+            worker.finished_all.connect(lambda: done.append(True))
+            worker.start()
+            worker.wait(10000)
+            _app.processEvents()
+
+            self.assertEqual(len(received), 2)
+            self.assertEqual(done, [True])
+
+
+class EscalationWorkerTests(unittest.TestCase):
+    def test_worker_emits_updated_job_on_success(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "a.jpg")
+            _write_synthetic(src)
+            job = P.process_photo(src, "square", 600, True)
+
+            class FakeProvider:
+                def request_crop(self, image_bytes, detection_metadata, inner_ratio, tier):
+                    return CropDecision(crop_box=(0.0, 0.0, 1.0, 1.0), confidence=0.9, tier=tier)
+
+            received = []
+            worker = EscalationWorker(job, FakeProvider(), "strong")
+            worker.photo_updated.connect(lambda j: received.append(j))
+            worker.start()
+            worker.wait(10000)
+            _app.processEvents()
+
+            self.assertEqual(len(received), 1)
+            self.assertEqual(received[0].crop_decision.tier, "strong")
+
+    def test_worker_emits_error_signal_on_failure(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "a.jpg")
+            _write_synthetic(src)
+            job = P.process_photo(src, "square", 600, True)
+
+            class FailingProvider:
+                def request_crop(self, *a, **kw):
+                    raise RuntimeError("api down")
+
+            errors = []
+            worker = EscalationWorker(job, FailingProvider(), "cheap")
+            worker.error.connect(lambda msg: errors.append(msg))
+            worker.start()
+            worker.wait(10000)
+            _app.processEvents()
+
+            self.assertEqual(errors, ["api down"])
+
+
 if __name__ == "__main__":
     unittest.main()
