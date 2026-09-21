@@ -1,8 +1,8 @@
 # Escalated photo appears squeezed/stretched rather than cropped
 
-Status: diagnosed — plausible root cause confirmed by code inspection, not proven against a
-live repro (would need an actual AI provider response to confirm the returned box is
-off-ratio), not fixed
+Status: fixed (commit 5b117d2) — see "Session update" below. The gap itself was confirmed by
+code inspection; whether it was *the* actual cause of what the user originally saw was never
+proven against a live repro, but the gap is real and is now closed regardless.
 
 ## Observed
 
@@ -47,13 +47,17 @@ whether it's *the* cause of what the user saw is not proven — that requires ei
 escalation call with a real provider response to inspect, or a unit test asserting
 `apply_escalation` rejects/corrects an off-ratio `decision.crop_box`.
 
-## Likely fix shape (not applied — for the next session)
+## Likely fix shape (as applied)
 
-Either validate `decision.crop_box`'s ratio against `lay["inner_ratio"]` in `apply_escalation`
-and reject/retry on mismatch (mirroring how `render()` in `src/hp5_emulate.py` already raises
-`ValueError` for an off-ratio crop in the non-GUI CLI path), or clamp/adjust the returned box to
-the correct ratio before building `CropBox`. Needs a test that feeds `apply_escalation` a fake
-provider returning a deliberately off-ratio box and asserts the render doesn't silently stretch.
+Clamped/adjusted the returned box to the correct ratio before building `CropBox`: a new
+`_correct_crop_ratio` helper in `src/pipeline.py` adjusts an off-ratio `decision.crop_box` to
+match `lay["inner_ratio"]` (keeping its center fixed) before `apply_escalation` renders it.
+Covered by `test_apply_escalation_corrects_off_ratio_crop_box_from_provider`, which feeds a
+fake provider a deliberately off-ratio box and asserts the correction happens.
+
+## Session update: fixed
+
+Fixed and committed in `5b117d2`.
 
 ## Notes for whoever picks this up
 

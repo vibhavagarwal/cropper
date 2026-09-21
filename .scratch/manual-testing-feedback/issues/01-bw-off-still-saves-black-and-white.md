@@ -1,6 +1,6 @@
 # B/W filter unchecked, but saved output is still black and white
 
-Status: diagnosed — root cause confirmed by code inspection, not yet fixed
+Status: fixed (commit 5b117d2) — see "Session update" below
 
 ## Observed
 
@@ -35,10 +35,13 @@ didn't catch it: no test exercises `save_kept_jobs`/`save_action.py` against a c
 `_make_job()`, which is hardcoded to `"L"` mode (`Image.new("L", (600, 600), 128)` in the
 test's `job.rendered` setup), so the always-`.convert("L")` bug is invisible to it either way.
 
-**Likely fix shape** (not applied — for the next session): save in the job's actual rendered
-mode instead of forcing `"L"`, e.g. `job.rendered.save(dst, ...)` (or convert conditionally on
-`job.apply_bw`/`job.rendered.mode`). Should come with a new `SaveActionTests` case that builds
-an `"RGB"`-mode job and asserts the saved file is not grayscale, since this is exactly the gap
-that let the bug ship.
+**Likely fix shape** (as applied): save in the job's actual rendered mode instead of forcing
+`"L"` — `gui/save_action.py` now does `job.rendered.save(dst, ...)`. Covered by a new
+`SaveActionTests` case (`test_saves_color_job_as_color_not_grayscale`) asserting a saved
+`"RGB"`-mode job isn't grayscale.
+
+## Session update: fixed
+
+Fixed and committed in `5b117d2`. `gui/save_action.py:19` no longer force-converts to `"L"`.
 
 ## Comments

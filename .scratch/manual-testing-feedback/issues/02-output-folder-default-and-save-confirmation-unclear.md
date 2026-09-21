@@ -1,6 +1,6 @@
 # Default output folder isn't shown to the user, and save confirmation is easy to miss
 
-Status: reported
+Status: fixed (commit 5b117d2) — see "Session update: both parts implemented" below
 
 ## Observed
 
