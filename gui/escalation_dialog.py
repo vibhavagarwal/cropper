@@ -22,6 +22,8 @@ class EscalationConfirmDialog(QDialog):
             f"Escalating {num_photos} photo(s) could cost up to ${worst_case:.4f} "
             "(worst case, assumes every photo needs both the cheap and strong tiers)."
         )
+        self.cost_label.setWordWrap(True)
+        self.cost_label.setMinimumWidth(360)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel

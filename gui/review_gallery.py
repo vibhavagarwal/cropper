@@ -1,6 +1,6 @@
 """Review gallery: one card per photo, keep/discard checkbox, and entry points
 into escalation, manual crop, and the detection detail view."""
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QGridLayout, QLabel, QPushButton, QScrollArea, QVBoxLayout, QWidget,
@@ -32,10 +32,16 @@ class PhotoCard(QWidget):
     def __init__(self, job):
         super().__init__()
         self.job = job
+        self.setObjectName("photoCard")
+        self.setAttribute(Qt.WA_StyledBackground, True)
 
         self.thumb_label = QLabel()
+        self.thumb_label.setObjectName("photoThumb")
         self.status_label = QLabel()
+        self.status_label.setObjectName("photoStatus")
+        self.status_label.setWordWrap(True)
         self.keep_checkbox = QCheckBox("Keep")
+        self.keep_checkbox.setObjectName("keepCheck")
         self.keep_checkbox.toggled.connect(self._on_keep_toggled)
 
         escalate_button = QPushButton("Escalate")
@@ -43,6 +49,7 @@ class PhotoCard(QWidget):
         escalate_button.clicked.connect(self._on_escalate_clicked)
 
         self.escalate_checkbox = QCheckBox("Select for escalation")
+        self.escalate_checkbox.setObjectName("escalateCheck")
         self.escalate_checkbox.setEnabled(_escalation_eligible(job))
         self.escalate_checkbox.toggled.connect(lambda _checked: self.escalate_selection_changed.emit())
 
@@ -65,6 +72,9 @@ class PhotoCard(QWidget):
 
     def _on_keep_toggled(self, checked):
         self.job.keep = checked
+        self.setProperty("kept", checked)
+        self.style().unpolish(self)
+        self.style().polish(self)
         self.keep_selection_changed.emit()
 
     def _on_escalate_clicked(self):
@@ -81,6 +91,7 @@ class PhotoCard(QWidget):
             self.escalate_checkbox.setChecked(False)
         if self.job.error:
             self.status_label.setText(f"FAILED: {self.job.error}")
+            self._set_status_state("failed")
             return
         if self.job.rendered is not None:
             self.thumb_label.setPixmap(_pil_to_pixmap(self.job.rendered))
@@ -91,10 +102,17 @@ class PhotoCard(QWidget):
                 f"escalated ({self.job.crop_decision.tier}, "
                 f"confidence {self.job.crop_decision.confidence:.2f}{cost_suffix})"
             )
+            self._set_status_state("escalated")
         elif self.job.triage_decision and self.job.triage_decision.escalate:
             self.status_label.setText("flagged for escalation")
+            self._set_status_state("flagged")
         else:
             self.status_label.setText("formula crop")
+
+    def _set_status_state(self, state):
+        self.status_label.setProperty("state", state)
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
 
 
 class ReviewGallery(QWidget):
@@ -105,10 +123,13 @@ class ReviewGallery(QWidget):
         self._next_index = 0
 
         self.cost_label = QLabel("Running cost: $0.000000")
+        self.cost_label.setObjectName("costLabel")
         self.empty_label = QLabel(_EMPTY_STATE_TEXT)
+        self.empty_label.setObjectName("emptyState")
 
         self._container = QWidget()
         self._grid = QGridLayout(self._container)
+        self._grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self._scroll = QScrollArea()
         self._scroll.setWidget(self._container)
         self._scroll.setWidgetResizable(True)
@@ -172,3 +193,4 @@ class ReviewGallery(QWidget):
 
     def _update_empty_state(self):
         self.empty_label.setVisible(len(self.cards) == 0)
+        self._scroll.setVisible(bool(self.cards))
