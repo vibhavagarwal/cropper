@@ -1,6 +1,10 @@
 # "Flagged for escalation" messaging is only meaningful once triage thresholds are tuned
 
-Status: reported — for the user's own understanding, logged for later, no fix requested
+Status: resolved via a separate ticket — see
+`.scratch/triage-and-border-tuning/issues/01-remove-saliency-edge-touch-from-triage.md`, which
+was scoped 2026-09-21 to remove the saliency edge-touch check entirely (the specific condition
+diagnosed below as the most likely over-triggering culprit). No separate fix needed here — this
+file remains as the diagnosis/context that motivated that ticket.
 
 ## Observed / discussion
 

@@ -1,6 +1,7 @@
 # Gallery grid leaves large empty space on the right side of wide windows
 
-Status: reported — no fix requested, note + suggestions only, per explicit "no changes though"
+Status: ready — deliberately reverses the prior "not a pain point" decision (see below), scoped
+2026-09-21
 
 ## Observed
 
@@ -38,13 +39,34 @@ in case that context changes the answer.
    right, which may read as less obviously "broken" even though the underlying density issue is
    unchanged.
 
-No recommendation made here — flagging the options and the prior-decision tension for whoever
-scopes this, not picking one.
+## Decision (resolved during scoping, 2026-09-21)
 
-## Notes for whoever picks this up
+**Option 1 — make the grid responsive.** Explicit, deliberate reversal of the prior
+`post-v1-cleanup` call, confirmed by the user. Column count should be computed from the
+gallery's available width at layout time instead of the hardcoded 4, so cards reflow to fill
+the window.
 
-- User said explicitly: no changes right now.
-- Check `.scratch/post-qss-visual-feedback/spec.md` for the full running list before starting —
-  more items from the same live-testing session may have been added after this one.
+## Design
+
+- `gui/review_gallery.py`: `ReviewGallery._grid` (a `QGridLayout`) currently gets cards placed
+  via `divmod(self._next_index, 4)` (hardcoded 4 columns) in `add_job`. Replace with a column
+  count derived from the scroll area's available width divided by the card width (248px,
+  matching the QSS `#photoCard` min/max-width) plus spacing — recompute on resize, not just at
+  add-time, so an existing gallery reflows if the user resizes the window after processing a
+  folder (not just on the next `add_job` call). This likely means overriding `resizeEvent` on
+  `ReviewGallery` or its scroll area, and re-laying-out existing cards into the grid at the new
+  column count rather than only placing new ones.
+- Keep the 248px card width and existing QSS untouched — only the column-count/placement logic
+  changes, not card sizing.
+
+## Testing
+
+- Unit test: given a gallery width wide enough for N columns, adding M cards places them at the
+  expected `(row, col)` positions for that column count (verifies the width→column-count
+  calculation, not actual pixel rendering).
+- Unit test: reflow on resize — add cards at one width, simulate a resize to a wider width,
+  assert card positions update to use more columns (not just that new cards would use them).
+- Existing gallery tests (`ReviewGalleryTests` in `tests/test_gui_smoke.py`) that assume a fixed
+  4-column layout will need updating to either fix the test width or assert relatively.
 
 ## Comments

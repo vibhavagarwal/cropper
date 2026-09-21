@@ -1,7 +1,7 @@
 # In-app view of escalation cost history
 
-Status: requested 2026-09-20, not scoped, not implemented — captured during live testing of a
-running build, no investigation or design work done yet.
+Status: scoped 2026-09-21, broken into one implementation-ready ticket under
+`.scratch/escalation-history-view/issues/`: `01-history-dialog.md`.
 
 ## Context
 
@@ -33,22 +33,18 @@ escalations (which photo, when, tier, provider, cost, confidence), no filtering 
 range or by folder/run), and no export. The only surfaced views today are a single lifetime sum
 and a single photo's total cost, both passive labels, not a browsable log.
 
-## Not yet decided (needs scoping before implementation)
+## Decisions (resolved during scoping, 2026-09-21)
 
-- Where this view lives: a new dialog opened from a button (similar to "Configure API key..."),
-  a panel, or something else — not decided.
-- Whether it needs filtering/sorting (by date, by folder, by tier) or a flat chronological list
-  is enough for v1.
-- Whether it needs export (CSV, or just "the underlying file already is one, tell the user
-  where it is").
-- Whether it should show anything beyond what `DecisionRecord` already captures, or that's
-  sufficient.
+- **A new dialog**, opened via a new button in the bottom row (alongside "Configure API key...").
+- **Flat chronological list, newest first, for v1** — no filtering/sorting/export. Shows exactly
+  what `DecisionRecord` already captures (photo, date/time, tier, provider, cost, confidence) —
+  nothing beyond that for v1.
+- Filtering/sorting and export were both explicitly considered and deferred, not forgotten —
+  see the ticket for how to leave room for them later without over-building now.
 
-## Out of scope for now
+## Out of scope for v1
 
-Implementation. This is a feature request captured during a live-testing session, not a design
-or a plan — per this repo's own convention (`CLAUDE.md`), new feature work should be scoped
-(likely via brainstorming/grilling) and implemented in its own fresh session, not folded into
-whatever session happens to be running when the request comes up.
+Filtering, sorting, export, and anything beyond what `DecisionRecord` already stores. Explicitly
+deferred, not rejected — a future ticket if it turns out to matter in practice.
 
 ## Comments

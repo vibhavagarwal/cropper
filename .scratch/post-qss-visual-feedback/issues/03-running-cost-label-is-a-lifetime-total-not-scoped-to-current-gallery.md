@@ -1,7 +1,6 @@
 # "Running cost" label is a lifetime total, not scoped to the current gallery/run
 
-Status: reported — no fix requested, note only. Unlike issues 01/02, this one was a direct
-question ("is it meaningful?") that got a confirmed-by-code answer, not just an observation.
+Status: ready — scoped 2026-09-21
 
 ## Observed / confirmed
 
@@ -24,22 +23,31 @@ gallery grid, it strongly implies scope to what's visible — it isn't. This isn
 complaint, it's a confirmed mismatch between what the label appears to mean and what it
 actually computes.
 
-## Possible directions (not decided, not implemented)
+## Decision (resolved during scoping, 2026-09-21)
 
-1. Relabel it honestly — e.g. "Lifetime cost: $X" — cheapest fix, doesn't change behavior, just
-   stops it from implying the wrong scope.
-2. Scope the displayed number to the current gallery's jobs only (sum `last_cost` over
-   `self.cards`, similar to how `_make_job`/per-card cost already works) — matches what the
-   label's position visually implies, but changes what information is available at a glance
-   (loses the lifetime-spend visibility, which might matter for someone watching total spend
-   across a long session of repeated small runs).
-3. Show both — e.g. "This run: $X · Lifetime: $Y" — most informative, also the most layout
-   space and complexity.
+**Show both** — e.g. `"This run: $X · Lifetime: $Y"`.
 
-No recommendation made — flagging options for whoever scopes this.
+## Design
 
-## Notes for whoever picks this up
+- `gui/review_gallery.py`: `ReviewGallery.refresh_cost()` currently sets `cost_label`'s text
+  from `self._decision_log.running_cost` alone. Add a "this run" figure computed from the
+  gallery's own current cards: sum `getattr(card.job, "last_cost", None) or 0` over
+  `self.cards.values()` (same pattern `PhotoCard`'s own per-card cost suffix already uses —
+  see `gui/review_gallery.py:99`). Format both into the label, e.g.
+  `f"This run: ${this_run_cost:.6f} · Lifetime: ${self._decision_log.running_cost:.6f}"`.
+- "This run" should reset naturally on "Clear" / a new "Process Folder" run since it derives
+  from `self.cards`, which `clear()` already empties — no separate tracking needed.
+- Consider whether the `#costLabel` QSS selector/styling still reads well with the longer text;
+  probably fine, but worth a visual check once implemented.
 
-- Check `.scratch/post-qss-visual-feedback/spec.md` for the full running list before starting.
+## Testing
+
+- `ReviewGallery.refresh_cost()` test: gallery with some cards having `last_cost` set and a
+  `DecisionLog` with unrelated historical records — assert the label contains both the
+  gallery-scoped sum and the full lifetime sum, and that they differ when they should (i.e. the
+  test needs to prove they're computed independently, not just that both numbers appear
+  somewhere).
+- Existing tests asserting on `cost_label`'s exact text format will need updating for the new
+  two-part format.
 
 ## Comments

@@ -1,6 +1,6 @@
 # First-load window layout: oversized middle section, spacing looks off
 
-Status: reported — no fix requested yet, note only
+Status: ready
 
 ## Observed
 
@@ -28,17 +28,35 @@ wrong widgets by default Qt sizing behavior, rather than being given to the gall
 the one thing that should grow) or trimmed from the mostly-empty group box (which should stay
 compact). Not investigated further — no code read yet, this is a guess for whoever picks it up.
 
-## User's suggested fix for the output-folder-label placement
+## Decisions (resolved during scoping, 2026-09-21)
 
-Move `output_folder_label`'s text to sit next to the "Choose output folder..." button (in the
-bottom button row) instead of floating alone between the Run settings box and the gallery. This
-would also address part of the "large empty gap" complaint above by removing that label from
-the middle section entirely, not just tightening the Run settings box's own spacing.
+1. **Move `output_folder_label` into the bottom button row**, next to "Choose output folder..."
+   (confirmed by the user), instead of its own standalone widget between the Run settings box
+   and the gallery. Removes it from the middle section entirely.
+2. **Give the gallery explicit stretch priority** in `MainWindow`'s central `QVBoxLayout` so it
+   grows to fill available vertical space, while the Run settings group box and folder-picker
+   row stay their natural compact size instead of being stretched by default Qt sizing
+   behavior. Concretely: add a stretch factor favoring `self.gallery` when adding widgets to the
+   central layout (e.g. `layout.addWidget(self.gallery, stretch=1)`, with `input_panel`/
+   `busy_indicator` left at their default stretch of 0), and verify the "Run settings" group box
+   itself isn't independently expanding (check its size policy if the stretch factor alone
+   doesn't fix it).
 
-## Notes for whoever picks this up
+## Design
 
-- User said explicitly: no change needed right now, just capture for later.
-- More items from the same live-testing session may follow — check this file's parent
-  `spec.md` for an updated issue list before starting.
+- `gui/main_window.py`: remove `self.output_folder_label` from the central layout; instead add
+  it (or its text) into `bottom_row`, positioned next to `choose_output_button`. Keep
+  `_update_output_folder_label()`'s existing "Output folder (default): ..." / "Output folder:
+  ..." text logic — this is a placement change, not a text/behavior change.
+- `gui/main_window.py`: central layout stretch fix as described above.
+
+## Testing
+
+- Existing tests referencing `output_folder_label` (`test_output_folder_label_shows_default_before_save`,
+  `test_output_folder_label_reflects_chosen_override` in `tests/test_gui_smoke.py`) should still
+  pass with the label just relocated — update only if they assert on layout position, not just
+  text content.
+- No new behavior to test for the stretch-factor fix beyond a visual check (Qt layout stretch
+  isn't meaningfully unit-testable) — manual verification in the running app is expected here.
 
 ## Comments
