@@ -72,10 +72,14 @@ def tone_curve(y, p):
     return f + (1.0 - f) * out
 
 
-def make_grain(h, w, seed, p):
+GRAIN_SIZE_MULT = {"small": 0.5, "medium": 1.0, "large": 2.0}
+
+
+def make_grain(h, w, seed, p, size="medium"):
+    mult = GRAIN_SIZE_MULT[size]
     rng = np.random.default_rng(seed)
     long_edge = max(h, w)
-    cell = max(1.0, p["grain_cell"] * long_edge)
+    cell = max(1.0, p["grain_cell"] * mult * long_edge)
     # Coarse layer generated small, upsampled smoothly
     ch, cw = max(2, int(round(h / cell))), max(2, int(round(w / cell)))
     coarse = rng.standard_normal((ch, cw)).astype(np.float32)
@@ -88,10 +92,12 @@ def make_grain(h, w, seed, p):
     fine = rng.standard_normal((h, w)).astype(np.float32)
     fine = gaussian_filter(fine, 0.6)
     fine /= fine.std() + 1e-6
-    return p["grain_amp"] * coarse + p["grain_fine_amp"] * fine
+    return p["grain_amp"] * mult * coarse + p["grain_fine_amp"] * mult * fine
 
 
-def emulate(img, seed=0, p=PARAMS):
+def to_bw(img, p):
+    """WB-gain + gray-mix + tone-curve + soften. Returns a 2D float32 array,
+    0..1, gamma-encoded gray."""
     rgb = np.asarray(img.convert("RGB"), dtype=np.float32) / 255.0
     gains = np.array([p["wb_r"], p["wb_g"], p["wb_b"]], np.float32)
     mix = np.array([p["mix_r"], p["mix_g"], p["mix_b"]], np.float32) * gains
@@ -104,11 +110,35 @@ def emulate(img, seed=0, p=PARAMS):
     sigma = p["soften"] * max(h, w)
     if sigma > 0.05:
         y = gaussian_filter(y, sigma)
+    return y
 
-    g = make_grain(h, w, seed, p)
-    weight = 0.45 + 0.55 * 4.0 * y * (1.0 - y)  # strongest in midtones
-    y = np.clip(y + g * weight, 0.0, 1.0)
-    return Image.fromarray((y * 255.0 + 0.5).astype(np.uint8))
+
+def _grain_weight(luma):
+    return 0.45 + 0.55 * 4.0 * luma * (1.0 - luma)  # strongest in midtones
+
+
+def emulate(img, seed=0, p=PARAMS, apply_bw=True, apply_grain=True, grain_size="medium"):
+    if apply_bw:
+        y = to_bw(img, p)
+        h, w = y.shape
+    else:
+        rgb = np.asarray(img.convert("RGB"), dtype=np.float32) / 255.0
+        h, w = rgb.shape[:2]
+
+    if apply_grain:
+        g = make_grain(h, w, seed, p, grain_size)
+        if apply_bw:
+            y = np.clip(y + g * _grain_weight(y), 0.0, 1.0)
+        else:
+            mix = np.array([p["mix_r"], p["mix_g"], p["mix_b"]], np.float32)
+            mix /= mix.sum()
+            luma = rgb @ mix
+            weight = _grain_weight(luma)
+            rgb = np.clip(rgb + g[..., None] * weight[..., None], 0.0, 1.0)
+
+    if apply_bw:
+        return Image.fromarray((y * 255.0 + 0.5).astype(np.uint8))
+    return Image.fromarray((rgb * 255.0 + 0.5).astype(np.uint8))
 
 
 def add_border(img, frac, value=255):

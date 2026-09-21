@@ -9,7 +9,9 @@ from pathlib import Path
 class AppSettings:
     shape: str = "square"
     canvas_long: int = 2400
-    apply_filter: bool = True
+    apply_bw: bool = True
+    apply_grain: bool = True
+    grain_size: str = "medium"
     last_input_folder: str = ""
     last_output_folder: str = ""
 

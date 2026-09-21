@@ -82,6 +82,49 @@ class ToneTests(unittest.TestCase):
         self.assertGreater(np.percentile(out, 0.5), 2)  # blacks lifted, not crushed
 
 
+class BWGrainSplitTests(unittest.TestCase):
+    def test_default_kwargs_match_legacy_two_arg_call(self):
+        img = synthetic(300, 200)
+        legacy = np.asarray(H.emulate(img, seed=11))
+        split = np.asarray(H.emulate(img, seed=11, apply_bw=True, apply_grain=True,
+                                      grain_size="medium"))
+        self.assertTrue((legacy == split).all())
+
+    def test_apply_bw_false_retains_per_channel_color(self):
+        out = np.asarray(H.emulate(synthetic(300, 200), seed=5, apply_bw=False,
+                                    apply_grain=True)).astype(float)
+        self.assertEqual(out.shape[-1], 3)
+        self.assertGreater(np.abs(out[..., 0] - out[..., 1]).mean(), 2.0)
+
+    def test_apply_bw_true_apply_grain_false_has_no_seeded_noise(self):
+        flat = Image.new("RGB", (64, 64), (130, 100, 90))
+        a = np.asarray(H.emulate(flat, seed=1, apply_bw=True, apply_grain=False))
+        b = np.asarray(H.emulate(flat, seed=2, apply_bw=True, apply_grain=False))
+        self.assertTrue((a == b).all())
+
+    def test_grain_size_small_vs_large_differ_in_amplitude(self):
+        img = synthetic(300, 200)
+        baseline = np.asarray(H.emulate(img, seed=9, apply_grain=False)).astype(float)
+        small = np.asarray(H.emulate(img, seed=9, grain_size="small")).astype(float)
+        large = np.asarray(H.emulate(img, seed=9, grain_size="large")).astype(float)
+        small_std = (small - baseline).std()
+        large_std = (large - baseline).std()
+        self.assertGreater(large_std, small_std * 1.5)
+
+    def test_grain_on_color_image_is_identical_field_across_channels(self):
+        # Mid-gray, low-contrast image so added grain never saturates a
+        # channel (saturation clipping would legitimately make channel diffs
+        # diverge even though the underlying noise field is identical).
+        img = Image.new("RGB", (300, 200), (128, 120, 110))
+        no_grain = np.asarray(H.emulate(img, seed=3, apply_bw=False,
+                                         apply_grain=False)).astype(float)
+        grained = np.asarray(H.emulate(img, seed=3, apply_bw=False,
+                                        apply_grain=True)).astype(float)
+        diff = grained - no_grain
+        np.testing.assert_allclose(diff[..., 0], diff[..., 1], atol=1.0)
+        np.testing.assert_allclose(diff[..., 0], diff[..., 2], atol=1.0)
+
+
 class CliPathTests(unittest.TestCase):
     def test_process_file_shape_mode(self):
         with tempfile.TemporaryDirectory() as d:

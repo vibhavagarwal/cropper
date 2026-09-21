@@ -14,15 +14,18 @@ class ProcessFolderWorker(QThread):
     photo_ready = Signal(object)
     finished_all = Signal()
 
-    def __init__(self, folder, shape, canvas_long, apply_filter):
+    def __init__(self, folder, shape, canvas_long, apply_bw, apply_grain, grain_size):
         super().__init__()
         self.folder = folder
         self.shape = shape
         self.canvas_long = canvas_long
-        self.apply_filter = apply_filter
+        self.apply_bw = apply_bw
+        self.apply_grain = apply_grain
+        self.grain_size = grain_size
 
     def run(self):
-        for job in P.process_folder(self.folder, self.shape, self.canvas_long, self.apply_filter):
+        for job in P.process_folder(self.folder, self.shape, self.canvas_long,
+                                     self.apply_bw, self.apply_grain, self.grain_size):
             self.photo_ready.emit(job)
         self.finished_all.emit()
 

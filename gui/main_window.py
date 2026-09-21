@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QHBoxLayout, QMainWindow, QMessageBox, QProgressBar,
+    QApplication, QFileDialog, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
     QPushButton, QVBoxLayout, QWidget,
 )
 
@@ -55,6 +55,10 @@ class MainWindow(QMainWindow):
 
         self.input_panel = InputPanel(self.settings)
         self.input_panel.process_requested.connect(self._start_processing)
+        self.input_panel.folder_edit.textChanged.connect(self._update_output_folder_label)
+
+        self.output_folder_label = QLabel()
+        self.output_folder_label.setWordWrap(True)
 
         self.gallery = ReviewGallery(decision_log=self.decision_log)
 
@@ -85,10 +89,13 @@ class MainWindow(QMainWindow):
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.addWidget(self.input_panel)
+        layout.addWidget(self.output_folder_label)
         layout.addWidget(self.busy_indicator)
         layout.addWidget(self.gallery)
         layout.addLayout(bottom_row)
         self.setCentralWidget(central)
+
+        self._update_output_folder_label()
 
     def _set_busy(self, is_busy: bool):
         self.busy_indicator.setVisible(is_busy)
@@ -110,12 +117,20 @@ class MainWindow(QMainWindow):
             return self._output_override
         return self.input_panel.current_folder().rstrip("/\\") + "/out"
 
+    def _update_output_folder_label(self):
+        if self._output_override:
+            self.output_folder_label.setText(f"Output folder: {self.output_folder()}")
+        else:
+            self.output_folder_label.setText(
+                f"Output folder (default): {self.output_folder()}")
+
     def _on_choose_output_clicked(self):
         folder = QFileDialog.getExistingDirectory(self, "Choose output folder")
         if folder:
             self._output_override = folder
+            self._update_output_folder_label()
 
-    def _start_processing(self, folder, shape, canvas_long, apply_filter):
+    def _start_processing(self, folder, shape, canvas_long, apply_bw, apply_grain, grain_size):
         if self._worker is not None and self._worker.isRunning():
             self.statusBar().showMessage("Already processing a folder — please wait for it to finish.", 5000)
             return
@@ -136,12 +151,15 @@ class MainWindow(QMainWindow):
 
         self.settings.shape = shape
         self.settings.canvas_long = canvas_long
-        self.settings.apply_filter = apply_filter
+        self.settings.apply_bw = apply_bw
+        self.settings.apply_grain = apply_grain
+        self.settings.grain_size = grain_size
         self.settings.last_input_folder = folder
         self.settings.save(self.settings_path)
 
         self._set_busy(True)
-        self._worker = ProcessFolderWorker(folder, shape, canvas_long, apply_filter)
+        self._worker = ProcessFolderWorker(folder, shape, canvas_long, apply_bw, apply_grain,
+                                            grain_size)
         self._worker.photo_ready.connect(self._on_photo_ready)
         self._worker.finished_all.connect(self._on_processing_finished)
         self._worker.start()
@@ -174,7 +192,17 @@ class MainWindow(QMainWindow):
         confirm.exec()
         if not confirm.confirmed():
             return
-        self._run_escalation_worker(job, "cheap")
+        failed = []
+        self._run_escalation_worker(
+            job, "cheap", error_handler=lambda msg: failed.append(msg))
+        if failed:
+            summary = f"Escalation failed for {job.filename}: {failed[0]}"
+            self.statusBar().showMessage(summary, 8000)
+            QMessageBox.warning(self, "Escalation failed", summary)
+        else:
+            summary = f"Escalated {job.filename}."
+            self.statusBar().showMessage(summary, 5000)
+            QMessageBox.information(self, "Escalation complete", summary)
 
     def _run_escalation_worker(self, job, tier, error_handler=None):
         handler = error_handler or (lambda msg: QMessageBox.warning(self, "Escalation failed", msg))
@@ -269,8 +297,12 @@ class MainWindow(QMainWindow):
                 self.gallery.remove_job(j.src_path)
         self._update_save_button()
         if len(written) < len(attempted):
-            self.statusBar().showMessage(
-                f"Saved {len(written)} of {len(attempted)} photo(s) — "
-                f"{len(attempted) - len(written)} failed (check disk space/permissions).", 8000)
+            summary = (
+                f"Saved {len(written)} of {len(attempted)} photo(s) to {out_folder} — "
+                f"{len(attempted) - len(written)} failed (check disk space/permissions).")
+            self.statusBar().showMessage(summary, 8000)
+            QMessageBox.warning(self, "Save finished with errors", summary)
         else:
-            self.statusBar().showMessage(f"Saved {len(written)} photo(s) to {out_folder}.", 5000)
+            summary = f"Saved {len(written)} photo(s) to {out_folder}."
+            self.statusBar().showMessage(summary, 5000)
+            QMessageBox.information(self, "Save complete", summary)

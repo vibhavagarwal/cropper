@@ -22,7 +22,9 @@ class PhotoJob:
     filename: str
     shape: str
     canvas_long: int
-    apply_filter: bool
+    apply_bw: bool
+    apply_grain: bool
+    grain_size: str
     detection: object = None
     triage_decision: object = None
     crop_box: object = None
@@ -39,22 +41,27 @@ def _seed_for(filename: str) -> int:
     return int(hashlib.md5(filename.encode()).hexdigest()[:8], 16)
 
 
-def render_photo(img, crop_box, shape, canvas_long, apply_filter, seed):
+def render_photo(img, crop_box, shape, canvas_long, apply_bw, apply_grain, grain_size, seed):
     lay = H.layout(shape, canvas_long)
     iw, ih = lay["inner"]
     x0, y0, x1, y1 = crop_box.to_pixels(img.width, img.height)
     cropped = img.crop((x0, y0, x1, y1)).resize((iw, ih), Image.LANCZOS)
-    out = H.emulate(cropped, seed) if apply_filter else cropped.convert("L")
+    out = H.emulate(cropped, seed, apply_bw=apply_bw, apply_grain=apply_grain,
+                     grain_size=grain_size)
     t = lay["border"]
-    canvas = Image.new("L", lay["canvas"], 255)
+    mode = "L" if apply_bw else "RGB"
+    white = 255 if apply_bw else (255, 255, 255)
+    canvas = Image.new(mode, lay["canvas"], white)
     canvas.paste(out, (t, t))
     return canvas
 
 
-def process_photo(src_path: str, shape: str, canvas_long: int, apply_filter: bool) -> PhotoJob:
+def process_photo(src_path: str, shape: str, canvas_long: int, apply_bw: bool,
+                   apply_grain: bool, grain_size: str) -> PhotoJob:
     filename = os.path.basename(src_path)
     job = PhotoJob(src_path=src_path, filename=filename, shape=shape,
-                   canvas_long=canvas_long, apply_filter=apply_filter)
+                   canvas_long=canvas_long, apply_bw=apply_bw, apply_grain=apply_grain,
+                   grain_size=grain_size)
     try:
         img = ImageOps.exif_transpose(Image.open(src_path)).convert("RGB")
         bgr = np.asarray(img)[:, :, ::-1].copy()
@@ -65,19 +72,52 @@ def process_photo(src_path: str, shape: str, canvas_long: int, apply_filter: boo
         job.crop_box = crp.formula_crop(img.width, img.height, lay["inner_ratio"],
                                          job.detection.faces, symmetric)
         seed = _seed_for(filename)
-        job.rendered = render_photo(img, job.crop_box, shape, canvas_long, apply_filter, seed)
+        job.rendered = render_photo(img, job.crop_box, shape, canvas_long,
+                                     apply_bw, apply_grain, grain_size, seed)
     except Exception as e:  # noqa: BLE001 - a single bad photo must not stop the batch
         job.error = str(e)
     return job
 
 
-def process_folder(folder: str, shape: str, canvas_long: int, apply_filter: bool):
+def process_folder(folder: str, shape: str, canvas_long: int, apply_bw: bool,
+                    apply_grain: bool, grain_size: str):
     paths = sorted(
         p for p in glob.glob(os.path.join(folder, "*"))
         if os.path.splitext(p)[1].lower() in _PHOTO_EXTS
     )
     for p in paths:
-        yield process_photo(p, shape, canvas_long, apply_filter)
+        yield process_photo(p, shape, canvas_long, apply_bw, apply_grain, grain_size)
+
+
+def _correct_crop_ratio(crop_box: "crp.CropBox", img_w: int, img_h: int,
+                         inner_ratio: float, tol: float = 0.005) -> "crp.CropBox":
+    """Adjust crop_box so its pixel-space aspect ratio matches inner_ratio,
+    keeping its center fixed. AI-provided crop boxes are not guaranteed to
+    be on-ratio the way formula_crop's are by construction; render_photo
+    resizes whatever box it's given to a fixed inner size, so an off-ratio
+    box would otherwise be squeeze-stretched rather than cleanly cropped."""
+    x0, y0, x1, y1 = crop_box.to_pixels(img_w, img_h)
+    crop_w, crop_h = x1 - x0, y1 - y0
+    if crop_w <= 0 or crop_h <= 0:
+        return crop_box
+    ratio = crop_w / crop_h
+    if abs(ratio - inner_ratio) <= tol:
+        return crop_box
+
+    center_x, center_y = (x0 + x1) / 2, (y0 + y1) / 2
+    if ratio > inner_ratio:
+        new_w, new_h = round(crop_h * inner_ratio), crop_h
+    else:
+        new_w, new_h = crop_w, round(crop_w / inner_ratio)
+    new_w = min(new_w, img_w)
+    new_h = min(new_h, img_h)
+
+    left = max(0, min(center_x - new_w / 2, img_w - new_w))
+    top = max(0, min(center_y - new_h / 2, img_h - new_h))
+    return crp.CropBox(
+        x0=left / img_w, y0=top / img_h,
+        x1=(left + new_w) / img_w, y1=(top + new_h) / img_h,
+    )
 
 
 def apply_escalation(job: PhotoJob, provider, tier: str) -> PhotoJob:
@@ -93,10 +133,11 @@ def apply_escalation(job: PhotoJob, provider, tier: str) -> PhotoJob:
     decision = provider.request_crop(buf.getvalue(), metadata, lay["inner_ratio"], tier)
     job.crop_decision = decision
     x0, y0, x1, y1 = decision.crop_box
-    job.crop_box = crp.CropBox(x0, y0, x1, y1)
+    job.crop_box = _correct_crop_ratio(crp.CropBox(x0, y0, x1, y1), img.width, img.height,
+                                        lay["inner_ratio"])
     seed = _seed_for(job.filename)
     job.rendered = render_photo(img, job.crop_box, job.shape, job.canvas_long,
-                                 job.apply_filter, seed)
+                                 job.apply_bw, job.apply_grain, job.grain_size, seed)
     return job
 
 
@@ -105,5 +146,5 @@ def apply_manual_crop(job: PhotoJob, crop_box) -> PhotoJob:
     seed = _seed_for(job.filename)
     job.crop_box = crop_box
     job.rendered = render_photo(img, crop_box, job.shape, job.canvas_long,
-                                 job.apply_filter, seed)
+                                 job.apply_bw, job.apply_grain, job.grain_size, seed)
     return job

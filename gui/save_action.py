@@ -16,7 +16,7 @@ def save_kept_jobs(jobs, output_folder: str) -> list:
             continue
         dst = expected_output_path(job, output_folder)
         try:
-            job.rendered.convert("L").save(dst, quality=92, optimize=True)
+            job.rendered.save(dst, quality=92, optimize=True)
             written.append(dst)
         except OSError:
             continue

@@ -34,23 +34,28 @@ from settings import AppSettings  # noqa: E402
 
 class InputPanelTests(unittest.TestCase):
     def test_defaults_come_from_settings(self):
-        panel = InputPanel(AppSettings(shape="portrait", canvas_long=1800, apply_filter=False))
+        panel = InputPanel(AppSettings(shape="portrait", canvas_long=1800, apply_bw=False,
+                                        apply_grain=False, grain_size="large"))
         self.assertEqual(panel.shape_combo.currentText(), "portrait")
         self.assertEqual(panel.canvas_spin.value(), 1800)
-        self.assertFalse(panel.filter_checkbox.isChecked())
+        self.assertFalse(panel.bw_checkbox.isChecked())
+        self.assertFalse(panel.grain_checkbox.isChecked())
+        self.assertEqual(panel.grain_size_combo.currentText(), "large")
 
     def test_process_requested_emits_current_values(self):
         panel = InputPanel(AppSettings())
         panel.folder_edit.setText("C:/photos")
         panel.shape_combo.setCurrentText("landscape")
         panel.canvas_spin.setValue(3000)
-        panel.filter_checkbox.setChecked(False)
+        panel.bw_checkbox.setChecked(False)
+        panel.grain_checkbox.setChecked(False)
+        panel.grain_size_combo.setCurrentText("small")
 
         received = []
         panel.process_requested.connect(lambda *args: received.append(args))
         panel._on_process_clicked()
 
-        self.assertEqual(received, [("C:/photos", "landscape", 3000, False)])
+        self.assertEqual(received, [("C:/photos", "landscape", 3000, False, False, "small")])
 
     def test_current_folder_reflects_folder_edit(self):
         panel = InputPanel(AppSettings())
@@ -61,7 +66,9 @@ class InputPanelTests(unittest.TestCase):
         panel = InputPanel(AppSettings())
         self.assertIn(panel.shape_combo, panel.settings_group.findChildren(QComboBox))
         self.assertIn(panel.canvas_spin, panel.settings_group.findChildren(QSpinBox))
-        self.assertIn(panel.filter_checkbox, panel.settings_group.findChildren(QCheckBox))
+        self.assertIn(panel.bw_checkbox, panel.settings_group.findChildren(QCheckBox))
+        self.assertIn(panel.grain_checkbox, panel.settings_group.findChildren(QCheckBox))
+        self.assertIn(panel.grain_size_combo, panel.settings_group.findChildren(QComboBox))
         self.assertNotIn(panel.folder_edit, panel.settings_group.findChildren(QLineEdit))
 
     def test_process_folder_button_has_primary_weight_browse_does_not(self):
@@ -96,7 +103,7 @@ class ProcessFolderWorkerTests(unittest.TestCase):
             _write_synthetic(os.path.join(d, "b.jpg"), seed=2)
 
             received = []
-            worker = ProcessFolderWorker(d, "square", 600, True)
+            worker = ProcessFolderWorker(d, "square", 600, True, True, "medium")
             worker.photo_ready.connect(lambda job: received.append(job))
             done = []
             worker.finished_all.connect(lambda: done.append(True))
@@ -113,7 +120,7 @@ class EscalationWorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             src = os.path.join(d, "a.jpg")
             _write_synthetic(src)
-            job = P.process_photo(src, "square", 600, True)
+            job = P.process_photo(src, "square", 600, True, True, "medium")
 
             class FakeProvider:
                 def request_crop(self, image_bytes, detection_metadata, inner_ratio, tier):
@@ -133,7 +140,7 @@ class EscalationWorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             src = os.path.join(d, "a.jpg")
             _write_synthetic(src)
-            job = P.process_photo(src, "square", 600, True)
+            job = P.process_photo(src, "square", 600, True, True, "medium")
 
             class FailingProvider:
                 def request_crop(self, *a, **kw):
@@ -154,7 +161,7 @@ from gui.review_gallery import PhotoCard, ReviewGallery  # noqa: E402
 
 def _make_job(name="a.jpg", keep=False):
     job = P.PhotoJob(src_path=f"/tmp/{name}", filename=name, shape="square",
-                      canvas_long=600, apply_filter=True)
+                      canvas_long=600, apply_bw=True, apply_grain=True, grain_size="medium")
     job.rendered = Image.new("L", (600, 600), 128)
     job.keep = keep
     return job
@@ -437,7 +444,8 @@ class CropEditorDialogTests(unittest.TestCase):
             src = os.path.join(d, "a.jpg")
             Image.new("RGB", (800, 600), (128, 128, 128)).save(src)
             job = P.PhotoJob(src_path=src, filename="a.jpg", shape="square",
-                              canvas_long=600, apply_filter=True)
+                              canvas_long=600, apply_bw=True, apply_grain=True,
+                              grain_size="medium")
             job.rendered = Image.new("L", (600, 600), 128)
             dialog = CropEditorDialog(job, inner_ratio=1.0)
             self.assertIsNone(dialog.result_crop_box())
@@ -448,7 +456,8 @@ class CropEditorDialogTests(unittest.TestCase):
             # 4000x3000 source, square (1:1) target shape -> true inner_ratio is 1.0,
             # NOT 0.75 (which is what a buggy fraction-based computation would give)
             Image.new("RGB", (4000, 3000), (100, 150, 200)).save(src)
-            job = P.process_photo(src, shape="square", canvas_long=600, apply_filter=False)
+            job = P.process_photo(src, shape="square", canvas_long=600,
+                                   apply_bw=False, apply_grain=True, grain_size="medium")
             self.assertIsNone(job.error)
             lay_ratio = H.layout(job.shape, job.canvas_long)["inner_ratio"]
             self.assertAlmostEqual(lay_ratio, 1.0, places=3)
@@ -469,7 +478,8 @@ class CropEditorDialogTests(unittest.TestCase):
             src = os.path.join(d, "a.jpg")
             Image.new("RGB", (1000, 3000), (100, 150, 200)).save(src)
             job = P.PhotoJob(src_path=src, filename="a.jpg", shape="portrait",
-                              canvas_long=600, apply_filter=True)
+                              canvas_long=600, apply_bw=True, apply_grain=True,
+                              grain_size="medium")
 
             with unittest.mock.patch.object(
                     _QApp.primaryScreen(), "availableGeometry",
@@ -584,6 +594,24 @@ class SaveActionTests(unittest.TestCase):
             save_kept_jobs([job], out_dir)
             self.assertTrue(os.path.isdir(out_dir))
 
+    def test_saves_color_job_as_color_not_grayscale(self):
+        # Regression test: save_kept_jobs used to force every saved photo to
+        # "L" mode regardless of job.apply_bw, silently clobbering color
+        # output from a bw-off run back to grayscale at save time.
+        with tempfile.TemporaryDirectory() as d:
+            out_dir = os.path.join(d, "out")
+            job = _make_job("a.jpg", keep=True)
+            job.apply_bw = False
+            job.rendered = Image.new("RGB", (600, 600), (200, 100, 50))
+            written = save_kept_jobs([job], out_dir)
+            self.assertEqual(len(written), 1)
+            with Image.open(written[0]) as saved:
+                self.assertEqual(saved.convert("RGB").mode, "RGB")
+                r, g, b = saved.convert("RGB").getpixel((0, 0))
+                # A true grayscale conversion would collapse r/g/b together;
+                # confirm the saved pixel still carries distinct channels.
+                self.assertNotEqual((r, g, b), (r, r, r))
+
 
 def _make_window(config_dir):
     """Build a MainWindow rooted at a throwaway config dir instead of the
@@ -620,6 +648,30 @@ class MainWindowWiringTests(unittest.TestCase):
             window.input_panel.folder_edit.setText("/tmp/photos")
             self.assertEqual(window.output_folder(), "/tmp/photos/out")
 
+    def test_output_folder_label_shows_default_before_save(self):
+        # Regression test: the default output folder (<input folder>/out)
+        # was never shown anywhere in the UI before Save - the user could
+        # only discover it by reading the transient post-save status bar
+        # message or inspecting the filesystem.
+        with tempfile.TemporaryDirectory() as config_dir:
+            window = _make_window(config_dir)
+            window.input_panel.folder_edit.setText("/tmp/photos")
+            text = window.output_folder_label.text()
+            self.assertIn("/tmp/photos/out", text)
+            self.assertIn("default", text.lower())
+
+    def test_output_folder_label_reflects_chosen_override(self):
+        with tempfile.TemporaryDirectory() as config_dir, \
+                tempfile.TemporaryDirectory() as out_dir:
+            window = _make_window(config_dir)
+            from PySide6.QtWidgets import QFileDialog
+            with unittest.mock.patch.object(
+                    QFileDialog, "getExistingDirectory", return_value=out_dir):
+                window._on_choose_output_clicked()
+            text = window.output_folder_label.text()
+            self.assertIn(out_dir, text)
+            self.assertNotIn("default", text.lower())
+
     def test_processing_a_folder_populates_the_gallery(self):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
@@ -627,23 +679,58 @@ class MainWindowWiringTests(unittest.TestCase):
             window.input_panel.folder_edit.setText(d)
             window.input_panel.shape_combo.setCurrentText("square")
             window.input_panel.canvas_spin.setValue(600)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             self.assertEqual(len(window.gallery.cards), 1)
+
+    def test_processing_with_bw_off_produces_color_thumbnail(self):
+        with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            window = _make_window(config_dir)
+            window._start_processing(d, "square", 600, False, True, "medium")
+            window._worker.wait(10000)
+            _app.processEvents()
+            job = list(window.gallery.cards.values())[0].job
+            arr = np.asarray(job.rendered.convert("RGB")).astype(float)
+            self.assertGreater(np.abs(arr[..., 0] - arr[..., 1]).mean(), 1.0)
 
     def test_save_writes_only_kept_jobs(self):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             list(window.gallery.cards.values())[0].keep_checkbox.setChecked(True)
-            window._on_save_clicked()
+            from PySide6.QtWidgets import QMessageBox
+            with unittest.mock.patch.object(QMessageBox, "information"):
+                window._on_save_clicked()
             out_dir = os.path.join(d, "out")
             self.assertTrue(os.path.isdir(out_dir))
             self.assertEqual(len(os.listdir(out_dir)), 1)
+
+    def test_save_shows_durable_confirmation_with_count_and_folder(self):
+        # Regression test: the only post-save feedback used to be a transient
+        # status-bar message that auto-clears after 5s. Save now needs a
+        # durable prompt (a modal, same as the batch-escalation summary)
+        # stating how many files were saved and where.
+        with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            window = _make_window(config_dir)
+            window._start_processing(d, "square", 600, True, True, "medium")
+            window._worker.wait(10000)
+            _app.processEvents()
+            list(window.gallery.cards.values())[0].keep_checkbox.setChecked(True)
+
+            from PySide6.QtWidgets import QMessageBox
+            with unittest.mock.patch.object(QMessageBox, "information") as mock_info:
+                window._on_save_clicked()
+
+            mock_info.assert_called_once()
+            msg = mock_info.call_args.args[2]
+            self.assertIn("1", msg)
+            self.assertIn(window.output_folder(), msg)
 
     def test_starting_a_new_run_clears_the_previous_gallery(self):
         with tempfile.TemporaryDirectory() as config_dir, \
@@ -651,12 +738,12 @@ class MainWindowWiringTests(unittest.TestCase):
             _write_synthetic(os.path.join(d1, "a.jpg"), seed=1)
             _write_synthetic(os.path.join(d2, "b.jpg"), seed=2)
             window = _make_window(config_dir)
-            window._start_processing(d1, "square", 600, True)
+            window._start_processing(d1, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             self.assertEqual(len(window.gallery.cards), 1)
 
-            window._start_processing(d2, "square", 600, True)
+            window._start_processing(d2, "square", 600, True, True, "medium")
             # clear() runs synchronously, before the new worker thread starts
             self.assertEqual(len(window.gallery.cards), 0)
             window._worker.wait(10000)
@@ -669,7 +756,7 @@ class MainWindowWiringTests(unittest.TestCase):
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             _write_synthetic(os.path.join(d, "b.jpg"), seed=2)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             self.assertEqual(len(window.gallery.cards), 2)
@@ -677,7 +764,9 @@ class MainWindowWiringTests(unittest.TestCase):
             cards = list(window.gallery.cards.values())
             kept_card, other_card = cards[0], cards[1]
             kept_card.keep_checkbox.setChecked(True)
-            window._on_save_clicked()
+            from PySide6.QtWidgets import QMessageBox
+            with unittest.mock.patch.object(QMessageBox, "information"):
+                window._on_save_clicked()
 
             self.assertNotIn(kept_card.job.src_path, window.gallery.cards)
             self.assertIn(other_card.job.src_path, window.gallery.cards)
@@ -686,7 +775,7 @@ class MainWindowWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             job = list(window.gallery.cards.values())[0].job
@@ -712,7 +801,7 @@ class MainWindowWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             self.assertEqual(len(window.gallery.cards), 1)
@@ -725,7 +814,7 @@ class MainWindowWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             job = list(window.gallery.cards.values())[0].job
@@ -746,7 +835,7 @@ class MainWindowWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             job = list(window.gallery.cards.values())[0].job
@@ -830,7 +919,7 @@ class MainWindowWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             job = list(window.gallery.cards.values())[0].job
@@ -855,7 +944,7 @@ class MainWindowWiringTests(unittest.TestCase):
             _write_synthetic(os.path.join(d1, "a.jpg"), seed=1)
             _write_synthetic(os.path.join(d2, "b.jpg"), seed=2)
             window = _make_window(config_dir)
-            window._start_processing(d1, "square", 600, True)
+            window._start_processing(d1, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             list(window.gallery.cards.values())[0].keep_checkbox.setChecked(True)
@@ -863,7 +952,7 @@ class MainWindowWiringTests(unittest.TestCase):
             from PySide6.QtWidgets import QMessageBox
             with unittest.mock.patch.object(QMessageBox, "question",
                                              return_value=QMessageBox.StandardButton.No) as mock_q:
-                window._start_processing(d2, "square", 600, True)
+                window._start_processing(d2, "square", 600, True, True, "medium")
                 mock_q.assert_called_once()
 
             # user said No: the run must not have started, previous gallery untouched
@@ -876,7 +965,7 @@ class MainWindowWiringTests(unittest.TestCase):
             _write_synthetic(os.path.join(d1, "a.jpg"), seed=1)
             _write_synthetic(os.path.join(d2, "b.jpg"), seed=2)
             window = _make_window(config_dir)
-            window._start_processing(d1, "square", 600, True)
+            window._start_processing(d1, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             list(window.gallery.cards.values())[0].keep_checkbox.setChecked(True)
@@ -884,7 +973,7 @@ class MainWindowWiringTests(unittest.TestCase):
             from PySide6.QtWidgets import QMessageBox
             with unittest.mock.patch.object(QMessageBox, "question",
                                              return_value=QMessageBox.StandardButton.Yes):
-                window._start_processing(d2, "square", 600, True)
+                window._start_processing(d2, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
 
@@ -897,13 +986,13 @@ class MainWindowWiringTests(unittest.TestCase):
             _write_synthetic(os.path.join(d1, "a.jpg"), seed=1)
             _write_synthetic(os.path.join(d2, "b.jpg"), seed=2)
             window = _make_window(config_dir)
-            window._start_processing(d1, "square", 600, True)
+            window._start_processing(d1, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
 
             from PySide6.QtWidgets import QMessageBox
             with unittest.mock.patch.object(QMessageBox, "question") as mock_q:
-                window._start_processing(d2, "square", 600, True)
+                window._start_processing(d2, "square", 600, True, True, "medium")
                 mock_q.assert_not_called()
 
     def test_busy_indicator_hidden_initially(self):
@@ -915,7 +1004,7 @@ class MainWindowWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             self.assertFalse(window.busy_indicator.isHidden())
             window._worker.wait(10000)
             _app.processEvents()
@@ -925,7 +1014,7 @@ class MainWindowWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             self.assertFalse(window.save_button.isEnabled())
@@ -934,7 +1023,7 @@ class MainWindowWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             card = list(window.gallery.cards.values())[0]
@@ -949,7 +1038,7 @@ class MainWindowWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             list(window.gallery.cards.values())[0].keep_checkbox.setChecked(True)
@@ -963,12 +1052,14 @@ class MainWindowWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             list(window.gallery.cards.values())[0].keep_checkbox.setChecked(True)
 
-            window._on_save_clicked()
+            from PySide6.QtWidgets import QMessageBox
+            with unittest.mock.patch.object(QMessageBox, "information"):
+                window._on_save_clicked()
 
             self.assertFalse(window.save_button.isEnabled())
 
@@ -976,7 +1067,7 @@ class MainWindowWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             self.assertFalse(window.escalate_selected_button.isEnabled())
@@ -985,7 +1076,7 @@ class MainWindowWiringTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             job = list(window.gallery.cards.values())[0].job
@@ -1004,7 +1095,7 @@ class MainWindowWiringTests(unittest.TestCase):
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             _write_synthetic(os.path.join(d, "b.jpg"), seed=2)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
 
@@ -1046,7 +1137,7 @@ class MainWindowWiringTests(unittest.TestCase):
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             _write_synthetic(os.path.join(d, "b.jpg"), seed=2)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
 
@@ -1093,11 +1184,46 @@ class MainWindowWiringTests(unittest.TestCase):
             mock_warn.assert_called_once()
             self.assertIn(failing_filename, mock_warn.call_args.args[2])
 
+    def test_escalate_single_photo_shows_success_message(self):
+        # Regression test: unlike batch escalation (_on_escalate_selected_clicked),
+        # single-photo escalation (_on_escalate_requested) never showed any
+        # completion message - _on_escalation_done, which runs for both paths,
+        # only updates the card and cost header silently.
+        with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            window = _make_window(config_dir)
+            window._start_processing(d, "square", 600, True, True, "medium")
+            window._worker.wait(10000)
+            _app.processEvents()
+            job = list(window.gallery.cards.values())[0].job
+
+            class FakeProvider:
+                name = "openai"
+
+                def price_per_million_tokens(self, tier):
+                    return (1.0, 1.0)
+
+                def request_crop(self, image_bytes, detection_metadata, inner_ratio, tier):
+                    return CropDecision(crop_box=(0.0, 0.0, 1.0, 1.0), confidence=0.9, tier=tier)
+
+            window.provider = FakeProvider()
+
+            import gui.main_window as MW
+            from PySide6.QtWidgets import QMessageBox
+            with unittest.mock.patch.object(MW.EscalationConfirmDialog, "exec", return_value=None), \
+                    unittest.mock.patch.object(MW.EscalationConfirmDialog, "confirmed", return_value=True), \
+                    unittest.mock.patch.object(QMessageBox, "information") as mock_info:
+                window._on_escalate_requested(job)
+
+            self.assertIn(job.filename, window.statusBar().currentMessage())
+            mock_info.assert_called_once()
+            self.assertIn(job.filename, mock_info.call_args.args[2])
+
     def test_escalation_worker_hides_busy_indicator_when_done(self):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
             _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
             window = _make_window(config_dir)
-            window._start_processing(d, "square", 600, True)
+            window._start_processing(d, "square", 600, True, True, "medium")
             window._worker.wait(10000)
             _app.processEvents()
             job = list(window.gallery.cards.values())[0].job

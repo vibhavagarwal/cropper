@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
 
 
 class InputPanel(QWidget):
-    process_requested = Signal(str, str, int, bool)
+    process_requested = Signal(str, str, int, bool, bool, str)
 
     def __init__(self, initial_settings):
         super().__init__()
@@ -28,8 +28,15 @@ class InputPanel(QWidget):
         self.canvas_spin.setRange(200, 10000)
         self.canvas_spin.setValue(initial_settings.canvas_long)
 
-        self.filter_checkbox = QCheckBox("Apply HP5 filter")
-        self.filter_checkbox.setChecked(initial_settings.apply_filter)
+        self.bw_checkbox = QCheckBox("Apply B/W filter")
+        self.bw_checkbox.setChecked(initial_settings.apply_bw)
+
+        self.grain_checkbox = QCheckBox("Apply grain")
+        self.grain_checkbox.setChecked(initial_settings.apply_grain)
+
+        self.grain_size_combo = QComboBox()
+        self.grain_size_combo.addItems(["small", "medium", "large"])
+        self.grain_size_combo.setCurrentText(initial_settings.grain_size)
 
         self.process_button = QPushButton("Process Folder")
         self.process_button.setProperty("primary", True)
@@ -46,7 +53,10 @@ class InputPanel(QWidget):
         settings_row.addWidget(self.shape_combo)
         settings_row.addWidget(QLabel("Canvas long edge:"))
         settings_row.addWidget(self.canvas_spin)
-        settings_row.addWidget(self.filter_checkbox)
+        settings_row.addWidget(self.bw_checkbox)
+        settings_row.addWidget(self.grain_checkbox)
+        settings_row.addWidget(QLabel("Grain size:"))
+        settings_row.addWidget(self.grain_size_combo)
 
         process_row = QHBoxLayout()
         process_row.addStretch()
@@ -70,7 +80,9 @@ class InputPanel(QWidget):
             self.folder_edit.text(),
             self.shape_combo.currentText(),
             self.canvas_spin.value(),
-            self.filter_checkbox.isChecked(),
+            self.bw_checkbox.isChecked(),
+            self.grain_checkbox.isChecked(),
+            self.grain_size_combo.currentText(),
         )
 
     def dragEnterEvent(self, event):
