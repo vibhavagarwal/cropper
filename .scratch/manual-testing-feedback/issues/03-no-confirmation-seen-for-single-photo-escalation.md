@@ -1,10 +1,9 @@
 # No confirmation dialog seen when escalating a single photo, and no success message either
 
-Status: diagnosed further — user confirmed the escalation did run (so the "no API key"
-hypothesis below is ruled out), and confirmed via a side-by-side comparison that batch
-escalation ("Escalate selected") shows both the confirmation dialog and a success message
-correctly. One part of this (no success message) is now a **confirmed code gap**, not a
-hypothesis. The other part (no confirmation popup) remains unconfirmed. Not fixed.
+Status: closed — both halves resolved. Success message fixed in `5b117d2`. The confirmation
+dialog was re-checked live by the user afterward and does show up correctly — the original
+report was most likely a one-off missed/unfocused dialog, not a real defect. No code change
+needed for that half.
 
 ## Update: user follow-up testing
 
@@ -80,14 +79,11 @@ the escalation worker completes, giving it the same visible completion messaging
 test `tests/test_gui_smoke.py::MainWindowWiringTests::test_escalate_single_photo_shows_success_message`
 now passes (confirmed green, along with the rest of `MainWindowWiringTests`, 35/35 passing).
 
-**No confirmation popup (single-photo) — still unconfirmed, not attempted.** This session had no
-way to drive the actual running GUI (no interactive display/live app available in this
-environment, only the offscreen-Qt automated test suite) — automated tests can't observe a
-missed-focus/z-order symptom, only whether `.exec()`/`confirmed()` were called, which they
-already were shown to be identical between the two call sites. No new code defect was found in
-`_on_escalate_requested` vs. `_on_escalate_selected_clicked` beyond what the diagnosis above
-already documents; both still construct and `.exec()` `EscalationConfirmDialog` identically. This
-half is left as-is per the explicit instruction not to guess at a fix for something that might not
-be broken — it needs a live repro in the actual running app by someone who can interact with it.
+**No confirmation popup (single-photo) — checked live, works correctly.** The user re-tested
+single-photo escalation in the running app after the success-message fix and confirmed the
+confirmation dialog does appear as expected. Consistent with the diagnosis above finding no
+code-level difference between the single-photo and batch call sites — this was most likely a
+one-off missed/unfocused dialog during the original test session, not a reproducible defect.
+No code change made or needed.
 
 ## Comments
