@@ -2,12 +2,14 @@
 import sys
 from pathlib import Path
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from main_window import MainWindow
 
 
 _ICONS_DIR = (Path(__file__).resolve().parent / "assets" / "icons").as_posix()
+_LOGO_PATH = Path(__file__).resolve().parent / "assets" / "branding" / "logo.png"
 
 _STYLESHEET_TEMPLATE = """
 /* ---- surfaces ------------------------------------------------ */
@@ -168,8 +170,7 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: trans
     qproperty-alignment: 'AlignRight | AlignVCenter';
 }
 #emptyState {
-    background: #21262d; border: 1px dashed #30363d; border-radius: 8px;
-    color: #8b949e; font-size: 10pt; padding: 48px;
+    color: #8b949e; font-size: 10pt;
     qproperty-alignment: AlignCenter;
 }
 
@@ -205,6 +206,9 @@ _STYLESHEET = _STYLESHEET_TEMPLATE.replace("{A}", _ICONS_DIR)
 def main() -> int:
     app = QApplication(sys.argv)
     app.setStyleSheet(_STYLESHEET)
+    icon = QIcon(str(_LOGO_PATH))
+    if not icon.isNull():
+        app.setWindowIcon(icon)
     window = MainWindow()
     window.resize(1100, 750)
     window.show()

@@ -23,6 +23,9 @@ class InputPanel(QWidget):
         self.browse_button = QPushButton("Browse...")
         self.browse_button.clicked.connect(self._on_browse_clicked)
 
+        self.load_button = QPushButton("Load folder")
+        self.load_button.clicked.connect(self._on_load_folder_clicked)
+
         self.shape_combo = QComboBox()
         self.shape_combo.addItems(["square", "portrait", "landscape"])
         self.shape_combo.setCurrentText(initial_settings.shape)
@@ -53,6 +56,7 @@ class InputPanel(QWidget):
         folder_row.addWidget(QLabel("Folder:"))
         folder_row.addWidget(self.folder_edit)
         folder_row.addWidget(self.browse_button)
+        folder_row.addWidget(self.load_button)
         folder_row.addWidget(self.process_button)
 
         self.settings_group = QGroupBox("Run settings")
@@ -92,6 +96,11 @@ class InputPanel(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Choose input folder")
         if folder:
             self.folder_edit.setText(folder)
+            self.folder_selected.emit(folder)
+
+    def _on_load_folder_clicked(self):
+        folder = self.folder_edit.text()
+        if folder:
             self.folder_selected.emit(folder)
 
     def _on_process_button_clicked(self):

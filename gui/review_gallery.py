@@ -2,8 +2,8 @@
 into escalation, manual crop, and the detection detail view."""
 import os
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtCore import Qt, QRect, Signal
+from PySide6.QtGui import QFontMetrics, QImage, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QGridLayout, QLabel, QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
 )
@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 _EMPTY_STATE_TEXT = "No photos yet — choose a folder and click Process Folder to get started."
 _EMPTY_STATE_WIDTH = 320
 _LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "branding", "logo.png")
-_LOGO_SIZE = 120
+_LOGO_SIZE = 200
 
 # Matches #photoCard's fixed min/max-width in the QSS.
 _CARD_WIDTH = 248
@@ -147,13 +147,19 @@ class ReviewGallery(QWidget):
         self.empty_label = QLabel(_EMPTY_STATE_TEXT)
         self.empty_label.setObjectName("emptyState")
         self.empty_label.setWordWrap(True)
-        # A genuinely fixed width (not just AlignHCenter) so Qt's
-        # height-for-width wrapping is deterministic - a word-wrapped QLabel
-        # centered via alignment alone sizes itself to an unreliable
-        # "preferred width" heuristic, which previously clipped the last
-        # line(s) of this message instead of reserving room for them.
-        self.empty_label.setFixedWidth(_EMPTY_STATE_WIDTH)
-        self.empty_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Qt's heightForWidth layout negotiation for a word-wrapped QLabel
+        # proved unreliable through this nested wrapper/stretch structure
+        # (silently allocated far less height than the wrapped text needed,
+        # clipping the last line(s), even with the size policy correctly
+        # opted into height-for-width). Sidestep it entirely: compute the
+        # wrapped block's exact size with QFontMetrics and fix both
+        # dimensions directly, so there's no negotiation to get wrong.
+        fm = QFontMetrics(self.empty_label.font())
+        wrapped_rect = fm.boundingRect(
+            QRect(0, 0, _EMPTY_STATE_WIDTH, 0),
+            Qt.TextFlag.TextWordWrap | Qt.AlignmentFlag.AlignCenter, _EMPTY_STATE_TEXT)
+        self.empty_label.setFixedSize(_EMPTY_STATE_WIDTH, wrapped_rect.height() + 8)
 
         self.logo_label = QLabel()
         self.logo_label.setObjectName("emptyStateLogo")

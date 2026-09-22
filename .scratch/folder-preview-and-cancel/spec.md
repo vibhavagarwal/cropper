@@ -13,5 +13,6 @@ in the same message; not otherwise coupled - could be scoped/implemented indepen
 
 - `issues/01-preview-original-photos-on-folder-select.md`
 - `issues/02-stop-button-during-processing.md`
+- `issues/03-load-folder-button.md`
 
 ## Comments

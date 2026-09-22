@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QHBoxLayout, QLabel, QMainWindow, QMessageBox, QProgressBar,
     QPushButton, QVBoxLayout, QWidget,
@@ -37,12 +38,17 @@ from workers import EscalationWorker, FolderPreviewWorker, ProcessFolderWorker
 # tier. Fully automatic per the Global Constraints - no manual override.
 AUTO_ESCALATE_CONFIDENCE_THRESHOLD = 0.6
 
+_LOGO_PATH = Path(__file__).resolve().parent / "assets" / "branding" / "logo.png"
+
 
 class MainWindow(QMainWindow):
     def __init__(self, settings_path: Path = None, decision_log_path: Path = None):
         super().__init__()
         self.setWindowTitle("Cropper")
         self.setMinimumSize(900, 600)
+        icon = QIcon(str(_LOGO_PATH))
+        if not icon.isNull():
+            self.setWindowIcon(icon)
 
         self.settings_path = settings_path or (Path.home() / ".cropper" / "settings.json")
         self.settings = AppSettings.load(self.settings_path)

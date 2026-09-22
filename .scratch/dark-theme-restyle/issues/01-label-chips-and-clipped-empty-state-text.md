@@ -1,11 +1,18 @@
 # Dark theme regressions: mismatched label "chip" backgrounds, clipped empty-state text
 
 Status: fixed 2026-09-21. `QLabel { background: transparent; }` added to `gui/main.py`'s
-stylesheet (per the user's explicit direction). `gui/review_gallery.py`'s `empty_label` now uses
-`setFixedWidth(_EMPTY_STATE_WIDTH)` + `QSizePolicy.Fixed/Preferred` instead of relying on
-`AlignHCenter` alone, so word-wrap height-for-width sizing is deterministic. Verified with a new
-regression test (`test_empty_label_is_not_clipped_at_wide_window_widths`) and a visual check at
-the same ~1270px width from the original screenshot.
+stylesheet (per the user's explicit direction).
+
+The clipping fix needed two iterations - the first attempt (`setFixedWidth` +
+`QSizePolicy.Fixed/Preferred`) turned out still insufficient: `hasHeightForWidth()` on the
+policy was still `False` (needs an explicit `policy.setHeightForWidth(True)` call, which
+`QSizePolicy(h, v)` does not set implicitly), and even after fixing that, Qt's height-for-width
+negotiation through the nested wrapper/stretch layout structure still allocated far less height
+than the wrapped text needed. Gave up on layout negotiation entirely: `empty_label`'s exact
+wrapped size is now computed directly with `QFontMetrics.boundingRect(..., Qt.TextWordWrap, ...)`
+and set via `setFixedSize()`, so there's no negotiation left to get wrong. Also see the
+`#emptyState` box itself was removed in `issues/02-...md`'s follow-up (bigger logo, no dashed
+box) - the remaining clipping bug was reproduced and fixed independent of that box's presence.
 
 ## Observed
 

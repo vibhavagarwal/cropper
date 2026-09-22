@@ -1,11 +1,20 @@
 # Show the app logo in the empty gallery state instead of (or alongside) plain text
 
-Status: implemented 2026-09-21. Resolved the "replace vs. both" open question as **both** - the
-logo (`gui/assets/branding/logo.png`, scaled to 120px, `gui/review_gallery.py`'s new
-`logo_label`) sits above the existing instructional text in the empty-state wrapper, not in
-place of it, so the "choose a folder and click Process Folder" instruction is still shown.
-Window/taskbar icon reuse was not addressed - out of scope for this ticket, could be a follow-up
-if wanted.
+Status: implemented 2026-09-21, then revised same day. Resolved the "replace vs. both" open
+question as **both** - the logo (`gui/assets/branding/logo.png`, `gui/review_gallery.py`'s new
+`logo_label`) sits above the existing instructional text, not in place of it, so the "choose a
+folder and click Process Folder" instruction is still shown.
+
+Follow-up after the first pass: the user saw a further clipping bug in the dashed `#emptyState`
+box (a third recurrence in this same area) and asked to just remove the box and enlarge the
+logo instead of chasing more box-sizing bugs. Implemented: `#emptyState`'s QSS background/
+dashed-border/padding removed entirely (plain text now), `_LOGO_SIZE` raised from 120 to 200.
+The underlying clipping bug was also root-caused and fixed for real, independent of the box's
+removal - see `issues/01-...md`.
+
+Window/taskbar icon reuse **was** picked up in the same follow-up (the user asked separately) -
+`MainWindow.setWindowIcon()` and `QApplication.setWindowIcon()` (in `gui/main_window.py` and
+`gui/main.py` respectively) both now use the same logo file.
 
 ## Context
 

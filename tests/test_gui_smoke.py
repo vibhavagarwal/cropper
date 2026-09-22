@@ -144,6 +144,22 @@ class InputPanelTests(unittest.TestCase):
         panel.set_processing(False)
         self.assertEqual(panel.process_button.text(), "Process Folder")
 
+    def test_load_folder_button_emits_folder_selected_with_current_text(self):
+        panel = InputPanel(AppSettings())
+        panel.folder_edit.setText("C:/from/last/session")
+        received = []
+        panel.folder_selected.connect(received.append)
+        panel._on_load_folder_clicked()
+        self.assertEqual(received, ["C:/from/last/session"])
+
+    def test_load_folder_button_does_nothing_when_folder_field_is_empty(self):
+        panel = InputPanel(AppSettings())
+        panel.folder_edit.setText("")
+        received = []
+        panel.folder_selected.connect(received.append)
+        panel._on_load_folder_clicked()
+        self.assertEqual(received, [])
+
     def test_dropping_a_folder_emits_folder_selected(self):
         panel = InputPanel(AppSettings())
         received = []
@@ -624,9 +640,13 @@ class ReviewGalleryTests(unittest.TestCase):
         gallery.show()
         gallery.resize(900, 700)
         _app.processEvents()
-        label_mid = gallery.empty_label.geometry().center().y()
+        # Center of the whole logo+message block, not just the text label -
+        # the logo sits above the text as one centered unit.
+        block_top = gallery.logo_label.geometry().top()
+        block_bottom = gallery.empty_label.geometry().bottom()
+        block_mid = (block_top + block_bottom) / 2
         gallery_mid = gallery.height() / 2
-        self.assertAlmostEqual(label_mid, gallery_mid, delta=60)
+        self.assertAlmostEqual(block_mid, gallery_mid, delta=60)
 
     def test_empty_label_is_not_clipped_at_wide_window_widths(self):
         # Regression test: AlignHCenter alone let the word-wrapped label size
@@ -1009,6 +1029,28 @@ class MainWindowWiringTests(unittest.TestCase):
             _app.processEvents()
             self.assertEqual(len(window.gallery.cards), 2)
             self.assertTrue(all(not c.job.processed for c in window.gallery.cards.values()))
+
+    def test_load_folder_button_previews_a_folder_restored_from_last_session(self):
+        # Regression scenario: on a fresh launch, folder_edit is pre-filled
+        # from AppSettings.last_input_folder, but no preview fires
+        # automatically (folder_selected only fires on a deliberate Browse/
+        # drop/Load-folder action) - "Load folder" is how the user gets a
+        # preview for that already-filled-in folder without re-picking it.
+        with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
+            _write_synthetic(os.path.join(d, "a.jpg"), seed=1)
+            import settings as S
+            settings_path = _Path(config_dir) / "settings.json"
+            S.AppSettings(last_input_folder=d).save(settings_path)
+
+            window = _make_window(config_dir)
+            self.assertEqual(window.input_panel.folder_edit.text(), d)
+            self.assertEqual(len(window.gallery.cards), 0)  # no auto-preview on launch
+
+            window.input_panel._on_load_folder_clicked()
+            window._preview_worker.wait(10000)
+            _app.processEvents()
+            self.assertEqual(len(window.gallery.cards), 1)
+            self.assertFalse(list(window.gallery.cards.values())[0].job.processed)
 
     def test_processing_reuses_preview_cards_and_upgrades_them_in_place(self):
         with tempfile.TemporaryDirectory() as config_dir, tempfile.TemporaryDirectory() as d:
