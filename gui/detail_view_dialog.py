@@ -24,7 +24,7 @@ def render_detection_overlay(job):
         crop_box = job.crop_box if job.crop_box is not None else CropBox(0.0, 0.0, 1.0, 1.0)
         crop_w_frac = crop_box.x1 - crop_box.x0
         crop_h_frac = crop_box.y1 - crop_box.y0
-        lay = H.layout(job.shape, job.canvas_long)
+        lay = H.layout(job.shape, job.canvas_long, border_size=job.border_size)
         border = lay["border"]
         inner_w, inner_h = lay["inner"]
         for face in job.detection.faces:
@@ -71,7 +71,7 @@ class DetailViewDialog(QDialog):
                 if r.photo_name == job.filename and r.escalated
             )
             if total_cost:
-                info_lines.append(f"Total cost: ${total_cost:.6f}")
+                info_lines.append(f"Estimated cost for escalation: ${total_cost:.6f}")
         self.info_label = QLabel("\n".join(info_lines))
 
         layout = QVBoxLayout(self)

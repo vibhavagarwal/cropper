@@ -1,5 +1,6 @@
 """Main window: wires the input panel, background workers, review gallery,
 escalation flow, cost panel, and save action together."""
+import os
 import sys
 import time
 from pathlib import Path
@@ -26,10 +27,11 @@ from api_key_dialog import ApiKeyDialog
 from crop_editor_dialog import CropEditorDialog
 from detail_view_dialog import DetailViewDialog
 from escalation_dialog import EscalationConfirmDialog
+from escalation_history_dialog import EscalationHistoryDialog
 from input_panel import InputPanel
 from review_gallery import ReviewGallery
 from save_action import expected_output_path, save_kept_jobs
-from workers import EscalationWorker, ProcessFolderWorker
+from workers import EscalationWorker, FolderPreviewWorker, ProcessFolderWorker
 
 # Below this confidence, the cheap-tier result auto-escalates to the strong
 # tier. Fully automatic per the Global Constraints - no manual override.
@@ -52,13 +54,19 @@ class MainWindow(QMainWindow):
         self._reload_provider()
         self._output_override = None
         self._worker = None
+        self._preview_worker = None
+        # Folder whose photos are currently shown in the gallery (preview or
+        # processed), so a same-folder Process Folder can upgrade the
+        # existing preview cards in place instead of clearing first.
+        self._gallery_folder = None
 
         self.input_panel = InputPanel(self.settings)
         self.input_panel.process_requested.connect(self._start_processing)
+        self.input_panel.stop_requested.connect(self._on_stop_clicked)
         self.input_panel.folder_edit.textChanged.connect(self._update_output_folder_label)
+        self.input_panel.folder_selected.connect(self._on_folder_selected)
 
         self.output_folder_label = QLabel()
-        self.output_folder_label.setWordWrap(True)
 
         self.gallery = ReviewGallery(decision_log=self.decision_log)
 
@@ -81,21 +89,25 @@ class MainWindow(QMainWindow):
         self.configure_api_key_button = QPushButton("Configure API key...")
         self.configure_api_key_button.setProperty("quiet", True)
         self.configure_api_key_button.clicked.connect(self._on_configure_api_key_clicked)
+        self.escalation_history_button = QPushButton("Escalation history...")
+        self.escalation_history_button.setProperty("quiet", True)
+        self.escalation_history_button.clicked.connect(self._on_escalation_history_clicked)
 
         bottom_row = QHBoxLayout()
         bottom_row.addWidget(self.save_button)
         bottom_row.addWidget(self.escalate_selected_button)
         bottom_row.addWidget(choose_output_button)
-        bottom_row.insertStretch(3)
+        bottom_row.addWidget(self.output_folder_label)
+        bottom_row.insertStretch(4)
         bottom_row.addWidget(self.clear_button)
         bottom_row.addWidget(self.configure_api_key_button)
+        bottom_row.addWidget(self.escalation_history_button)
 
         central = QWidget()
         layout = QVBoxLayout(central)
         layout.addWidget(self.input_panel)
-        layout.addWidget(self.output_folder_label)
         layout.addWidget(self.busy_indicator)
-        layout.addWidget(self.gallery)
+        layout.addWidget(self.gallery, stretch=1)
         layout.addLayout(bottom_row)
         self.setCentralWidget(central)
 
@@ -116,6 +128,10 @@ class MainWindow(QMainWindow):
         if dialog.key_changed():
             self._reload_provider()
 
+    def _on_escalation_history_clicked(self):
+        dialog = EscalationHistoryDialog(self.decision_log, parent=self)
+        dialog.exec()
+
     def output_folder(self) -> str:
         if self._output_override:
             return self._output_override
@@ -134,7 +150,44 @@ class MainWindow(QMainWindow):
             self._output_override = folder
             self._update_output_folder_label()
 
-    def _start_processing(self, folder, shape, canvas_long, apply_bw, apply_grain, grain_size):
+    def _on_folder_selected(self, folder):
+        # A deliberate folder choice (Browse dialog or drop), not every
+        # keystroke in the folder field - see InputPanel.folder_selected.
+        if self._worker is not None and self._worker.isRunning():
+            return
+        if not folder or not os.path.isdir(folder):
+            return
+        if self._preview_worker is not None and self._preview_worker.isRunning():
+            self._preview_worker.wait()
+        if self.gallery.has_unsaved_kept_work():
+            answer = QMessageBox.question(
+                self, "Discard unsaved work?",
+                "Some kept photos haven't been saved yet. Loading a new folder will discard "
+                "them. Continue?",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self.gallery.clear()
+        self._gallery_folder = os.path.normpath(folder)
+        self._preview_worker = FolderPreviewWorker(
+            folder, self.settings.shape, self.settings.canvas_long, self.settings.apply_bw,
+            self.settings.apply_grain, self.settings.grain_size, self.settings.border_size)
+        self._preview_worker.preview_ready.connect(self._on_preview_ready)
+        self._preview_worker.start()
+
+    def _on_preview_ready(self, job):
+        self.gallery.add_job(job)
+        self._wire_card_signals(self.gallery.cards[job.src_path])
+
+    def _wire_card_signals(self, card):
+        card.escalate_requested.connect(self._on_escalate_requested)
+        card.manual_crop_requested.connect(self._on_manual_crop_requested)
+        card.details_requested.connect(self._on_details_requested)
+        card.escalate_selection_changed.connect(self._update_escalate_selected_button)
+        card.keep_selection_changed.connect(self._update_save_button)
+
+    def _start_processing(self, folder, shape, canvas_long, apply_bw, apply_grain, grain_size,
+                           border_size):
         if self._worker is not None and self._worker.isRunning():
             self.statusBar().showMessage("Already processing a folder — please wait for it to finish.", 5000)
             return
@@ -146,7 +199,13 @@ class MainWindow(QMainWindow):
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
-        self.gallery.clear()
+        # Reuse existing cards (upgraded in place via update_job) when this
+        # run targets the same folder already shown - e.g. from the preview
+        # populated on Browse/drop, or a re-run with changed settings -
+        # instead of clearing to empty and rebuilding from scratch.
+        same_folder = self._gallery_folder == os.path.normpath(folder)
+        if not same_folder:
+            self.gallery.clear()
         self._update_save_button()
         # Keep the input panel's folder field authoritative for output_folder()
         # even when a caller (e.g. a test, or a future re-run action) invokes
@@ -158,28 +217,36 @@ class MainWindow(QMainWindow):
         self.settings.apply_bw = apply_bw
         self.settings.apply_grain = apply_grain
         self.settings.grain_size = grain_size
+        self.settings.border_size = border_size
         self.settings.last_input_folder = folder
         self.settings.save(self.settings_path)
 
+        self._gallery_folder = os.path.normpath(folder)
         self._set_busy(True)
+        self.input_panel.set_processing(True)
         self._worker = ProcessFolderWorker(folder, shape, canvas_long, apply_bw, apply_grain,
-                                            grain_size)
+                                            grain_size, border_size)
         self._worker.photo_ready.connect(self._on_photo_ready)
         self._worker.finished_all.connect(self._on_processing_finished)
         self._worker.start()
 
+    def _on_stop_clicked(self):
+        if self._worker is not None and self._worker.isRunning():
+            self._worker.stop()
+            self.statusBar().showMessage(
+                "Stopping after the photo currently being processed...", 3000)
+
     def _on_processing_finished(self):
         self._set_busy(False)
+        self.input_panel.set_processing(False)
         self.statusBar().showMessage("Processing complete.", 3000)
 
     def _on_photo_ready(self, job):
+        if job.src_path in self.gallery.cards:
+            self.gallery.update_job(job)
+            return
         self.gallery.add_job(job)
-        card = self.gallery.cards[job.src_path]
-        card.escalate_requested.connect(self._on_escalate_requested)
-        card.manual_crop_requested.connect(self._on_manual_crop_requested)
-        card.details_requested.connect(self._on_details_requested)
-        card.escalate_selection_changed.connect(self._update_escalate_selected_button)
-        card.keep_selection_changed.connect(self._update_save_button)
+        self._wire_card_signals(self.gallery.cards[job.src_path])
 
     def _update_escalate_selected_button(self):
         self.escalate_selected_button.setEnabled(bool(self.gallery.selected_for_escalation()))
@@ -269,7 +336,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Escalation complete", summary)
 
     def _on_manual_crop_requested(self, job):
-        lay = H.layout(job.shape, job.canvas_long)
+        lay = H.layout(job.shape, job.canvas_long, border_size=job.border_size)
         dialog = CropEditorDialog(job, inner_ratio=lay["inner_ratio"], parent=self)
         dialog.exec()
         new_box = dialog.result_crop_box()

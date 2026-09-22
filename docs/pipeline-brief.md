@@ -38,9 +38,10 @@ cropping) live in an older chat and are not included in this package.
 1. EXIF orientation correction. Coded, free, always runs. The source camera stores rotation as
    a flag instead of rotating pixels (6 of 9 test files carry orientation 8), so analysis on raw
    pixels sees the photo sideways. This is a data correctness fix, not a composition judgment.
-2. Detection pass. Coded and free: face detection (Haar cascade), saliency mapping (OpenCV
-   spectral residual), and a symmetry test (mirror flip pixel comparison). No tilt or line angle
-   detection and no perspective or keystone correction of any kind. The workflow assumes photos
+2. Detection pass. Coded and free: face detection (YuNet, a small bundled DNN detector),
+   saliency mapping (OpenCV spectral residual), and a symmetry test (mirror flip pixel
+   comparison). No tilt or line angle detection and no perspective or keystone correction of any
+   kind. The workflow assumes photos
    are shot at the orientation the user intends and only crops.
 3. Triage gate. Coded and free. Decides per photo whether to escalate to paid reasoning or to
    handle it with a formula. Escalate when any of these hold:

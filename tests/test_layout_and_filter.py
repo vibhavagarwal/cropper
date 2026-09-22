@@ -39,6 +39,29 @@ class LayoutTests(unittest.TestCase):
         self.assertAlmostEqual(H.layout("portrait", 2400)["inner_ratio"], 1824 / 2304)
         self.assertNotAlmostEqual(H.layout("portrait", 2400)["inner_ratio"], 0.8, places=3)
 
+    def test_border_size_small_matches_todays_default(self):
+        # regression pin: border_size="small" must reproduce today's exact
+        # output (same as calling layout() without the new parameter)
+        for long_edge in (1080, 2400, 5000):
+            for shape in H.SHAPES:
+                default = H.layout(shape, long_edge)
+                small = H.layout(shape, long_edge, border_size="small")
+                self.assertEqual(small, default)
+
+    def test_border_size_medium_and_large_are_measurably_bigger(self):
+        for shape in H.SHAPES:
+            small = H.layout(shape, 2400, border_size="small")["border"]
+            medium = H.layout(shape, 2400, border_size="medium")["border"]
+            large = H.layout(shape, 2400, border_size="large")["border"]
+            self.assertEqual(medium, round(0.04 * 2400))
+            self.assertEqual(large, round(0.06 * 2400))
+            self.assertGreater(medium, small)
+            self.assertGreater(large, medium)
+
+    def test_explicit_border_frac_overrides_border_size(self):
+        lay = H.layout("square", 2400, border_frac=0.1, border_size="large")
+        self.assertEqual(lay["border"], round(0.1 * 2400))
+
 
 class RenderTests(unittest.TestCase):
     def test_render_exact_canvas_and_pure_white_border(self):

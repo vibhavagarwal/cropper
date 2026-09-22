@@ -17,12 +17,13 @@ class AppSettingsTests(unittest.TestCase):
             self.assertTrue(loaded.apply_bw)
             self.assertTrue(loaded.apply_grain)
             self.assertEqual(loaded.grain_size, "medium")
+            self.assertEqual(loaded.border_size, "medium")
 
     def test_save_then_load_round_trips(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "settings.json"
             original = S.AppSettings(shape="portrait", canvas_long=1800, apply_bw=False,
-                                      apply_grain=False, grain_size="large",
+                                      apply_grain=False, grain_size="large", border_size="medium",
                                       last_input_folder="C:/photos", last_output_folder="C:/out")
             original.save(path)
             loaded = S.AppSettings.load(path)

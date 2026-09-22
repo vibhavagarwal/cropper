@@ -2,6 +2,7 @@ import os
 import sys
 import unittest
 
+import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -50,8 +51,25 @@ class SaliencyTests(unittest.TestCase):
 
 class FaceDetectionTests(unittest.TestCase):
     def test_no_faces_in_blank_image(self):
-        gray = np.zeros((200, 200), dtype=np.uint8)
-        self.assertEqual(D.detect_faces(gray), [])
+        bgr = np.zeros((200, 200, 3), dtype=np.uint8)
+        self.assertEqual(D.detect_faces(bgr), [])
+
+    def test_no_faces_on_repetitive_textured_background(self):
+        # Regression test: the Haar cascade this replaced false-positived
+        # heavily on repetitive/textured non-face patterns (e.g. a pegboard
+        # of holes) - a checkerboard-of-dots pattern approximates that here.
+        # See .scratch/face-detection-tuning/issues/01-...md.
+        h, w = 400, 400
+        bgr = np.full((h, w, 3), 180, dtype=np.uint8)
+        for cy in range(20, h, 40):
+            for cx in range(20, w, 40):
+                cv2.circle(bgr, (cx, cy), 8, (40, 40, 40), -1)
+        self.assertEqual(D.detect_faces(bgr), [])
+
+    def test_no_faces_on_random_noise(self):
+        rng = np.random.default_rng(0)
+        bgr = rng.integers(0, 256, size=(300, 300, 3), dtype=np.uint8)
+        self.assertEqual(D.detect_faces(bgr), [])
 
 
 class DetectTests(unittest.TestCase):

@@ -24,8 +24,6 @@ def triage(detection, image_area: int, thresholds: dict = THRESHOLDS) -> TriageD
         areas = sorted((f.area for f in detection.faces), reverse=True)
         if areas[0] < 1.5 * areas[1]:
             reasons.append("multiple faces with no clear primary subject")
-    if detection.saliency.touches_edge:
-        reasons.append("saliency blob touches an edge or corner")
     if thresholds["symmetry_ambiguous_low"] <= detection.symmetry_score <= thresholds["symmetry_ambiguous_high"]:
         reasons.append("symmetry score is ambiguous")
     return TriageDecision(escalate=bool(reasons), reasons=reasons)

@@ -28,7 +28,7 @@ class ProcessPhotoTests(unittest.TestCase):
             src = os.path.join(d, "a.jpg")
             synthetic_jpeg(src)
             job = P.process_photo(src, shape="landscape", canvas_long=1200,
-                                   apply_bw=True, apply_grain=True, grain_size="medium")
+                                   apply_bw=True, apply_grain=True, grain_size="medium", border_size="small")
             self.assertIsNone(job.error)
             self.assertIsNotNone(job.rendered)
             import hp5_emulate as H
@@ -39,7 +39,7 @@ class ProcessPhotoTests(unittest.TestCase):
             src = os.path.join(d, "a.jpg")
             synthetic_jpeg(src)
             job = P.process_photo(src, shape="square", canvas_long=800,
-                                   apply_bw=False, apply_grain=True, grain_size="medium")
+                                   apply_bw=False, apply_grain=True, grain_size="medium", border_size="small")
             self.assertIsNone(job.error)
             self.assertEqual(job.rendered.mode, "RGB")
 
@@ -48,7 +48,7 @@ class ProcessPhotoTests(unittest.TestCase):
             src = os.path.join(d, "a.jpg")
             synthetic_jpeg(src)
             job = P.process_photo(src, shape="square", canvas_long=800,
-                                   apply_bw=True, apply_grain=True, grain_size="medium")
+                                   apply_bw=True, apply_grain=True, grain_size="medium", border_size="small")
             self.assertIsNone(job.error)
             self.assertEqual(job.rendered.mode, "L")
 
@@ -58,7 +58,7 @@ class ProcessPhotoTests(unittest.TestCase):
             with open(src, "wb") as f:
                 f.write(b"not a jpeg")
             job = P.process_photo(src, shape="square", canvas_long=800,
-                                   apply_bw=True, apply_grain=True, grain_size="medium")
+                                   apply_bw=True, apply_grain=True, grain_size="medium", border_size="small")
             self.assertIsNotNone(job.error)
             self.assertIsNone(job.rendered)
 
@@ -71,12 +71,49 @@ class ProcessFolderTests(unittest.TestCase):
             with open(os.path.join(d, "c.jpg"), "wb") as f:
                 f.write(b"corrupt")
             jobs = list(P.process_folder(d, shape="square", canvas_long=600,
-                                          apply_bw=True, apply_grain=True, grain_size="medium"))
+                                          apply_bw=True, apply_grain=True, grain_size="medium", border_size="small"))
             self.assertEqual(len(jobs), 3)
             errored = [j for j in jobs if j.error]
             ok = [j for j in jobs if not j.error]
             self.assertEqual(len(errored), 1)
             self.assertEqual(len(ok), 2)
+
+
+class ListPhotoPathsTests(unittest.TestCase):
+    def test_lists_only_photo_extensions_sorted(self):
+        with tempfile.TemporaryDirectory() as d:
+            synthetic_jpeg(os.path.join(d, "b.jpg"), seed=1)
+            synthetic_jpeg(os.path.join(d, "a.JPEG"), seed=2)
+            with open(os.path.join(d, "notes.txt"), "w") as f:
+                f.write("not a photo")
+            paths = P.list_photo_paths(d)
+            names = [os.path.basename(p) for p in paths]
+            self.assertEqual(names, sorted(names))
+            self.assertEqual(set(names), {"a.JPEG", "b.jpg"})
+
+
+class LoadPreviewTests(unittest.TestCase):
+    def test_returns_unprocessed_job_with_raw_thumbnail(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "a.jpg")
+            synthetic_jpeg(src, w=800, h=600)
+            job = P.load_preview(src, shape="square", canvas_long=600, apply_bw=True,
+                                  apply_grain=True, grain_size="medium", border_size="small")
+            self.assertIsNone(job.error)
+            self.assertFalse(job.processed)
+            self.assertIsNotNone(job.rendered)
+            self.assertIsNone(job.detection)
+            self.assertIsNone(job.crop_box)
+
+    def test_sets_error_on_bad_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, "not_an_image.jpg")
+            with open(src, "wb") as f:
+                f.write(b"not a jpeg")
+            job = P.load_preview(src, shape="square", canvas_long=600, apply_bw=True,
+                                  apply_grain=True, grain_size="medium", border_size="small")
+            self.assertIsNotNone(job.error)
+            self.assertFalse(job.processed)
 
 
 class EscalationAndManualCropTests(unittest.TestCase):
@@ -85,7 +122,7 @@ class EscalationAndManualCropTests(unittest.TestCase):
             src = os.path.join(d, "a.jpg")
             synthetic_jpeg(src)
             job = P.process_photo(src, shape="square", canvas_long=600,
-                                   apply_bw=True, apply_grain=True, grain_size="medium")
+                                   apply_bw=True, apply_grain=True, grain_size="medium", border_size="small")
             original_rendered = job.rendered
 
             class FakeProvider:
@@ -109,7 +146,7 @@ class EscalationAndManualCropTests(unittest.TestCase):
             src = os.path.join(d, "a.jpg")
             synthetic_jpeg(src, w=800, h=600)
             job = P.process_photo(src, shape="square", canvas_long=600,
-                                   apply_bw=True, apply_grain=True, grain_size="medium")
+                                   apply_bw=True, apply_grain=True, grain_size="medium", border_size="small")
 
             class OffRatioProvider:
                 def request_crop(self, image_bytes, detection_metadata, inner_ratio, tier):
@@ -127,7 +164,7 @@ class EscalationAndManualCropTests(unittest.TestCase):
             src = os.path.join(d, "a.jpg")
             synthetic_jpeg(src)
             job = P.process_photo(src, shape="square", canvas_long=600,
-                                   apply_bw=True, apply_grain=True, grain_size="medium")
+                                   apply_bw=True, apply_grain=True, grain_size="medium", border_size="small")
             box = CropBox(0.0, 0.0, 1.0, 1.0)
             updated = P.apply_manual_crop(job, box)
             self.assertEqual(updated.crop_box, box)

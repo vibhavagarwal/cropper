@@ -42,11 +42,11 @@ class TriageTests(unittest.TestCase):
         decision = T.triage(d, image_area=100 * 100)
         self.assertNotIn("multiple faces with no clear primary subject", decision.reasons)
 
-    def test_edge_touching_blob_escalates(self):
+    def test_edge_touching_blob_alone_does_not_escalate(self):
         d = make_detection(touches_edge=True)
         decision = T.triage(d, image_area=100 * 100)
-        self.assertTrue(decision.escalate)
-        self.assertIn("saliency blob touches an edge or corner", decision.reasons)
+        self.assertFalse(decision.escalate)
+        self.assertEqual(decision.reasons, [])
 
     def test_ambiguous_symmetry_escalates(self):
         d = make_detection(symmetry_score=0.65)

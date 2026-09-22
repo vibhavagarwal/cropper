@@ -1,7 +1,8 @@
-"""Detection pass: face detection (Haar cascade), saliency mapping (spectral
-residual), and a symmetry test (mirror-flip comparison). No tilt or perspective
-correction - the pipeline brief assumes photos are shot at the intended
-orientation and only crops."""
+"""Detection pass: face detection (YuNet, a small DNN face detector), saliency
+mapping (spectral residual), and a symmetry test (mirror-flip comparison). No
+tilt or perspective correction - the pipeline brief assumes photos are shot at
+the intended orientation and only crops."""
+import os
 from dataclasses import dataclass
 
 import cv2
@@ -34,22 +35,36 @@ class DetectionResult:
     symmetry_score: float
 
 
-_FACE_CASCADE = None
+# Was a Haar cascade (haarcascade_frontalface_default.xml) - swapped for this
+# DNN detector because the cascade false-positived heavily on repetitive,
+# textured non-face backgrounds (pegboard holes, fabric weave), which fed
+# directly into triage's "multiple faces" condition.
+_MODEL_PATH = os.path.join(os.path.dirname(__file__), "models", "face_detection_yunet_2023mar.onnx")
+_FACE_DETECTOR = None
 
 
-def _face_cascade():
-    global _FACE_CASCADE
-    if _FACE_CASCADE is None:
-        path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        _FACE_CASCADE = cv2.CascadeClassifier(path)
-    return _FACE_CASCADE
+def _face_detector():
+    global _FACE_DETECTOR
+    if _FACE_DETECTOR is None:
+        _FACE_DETECTOR = cv2.FaceDetectorYN.create(
+            _MODEL_PATH, "", (320, 320), score_threshold=0.6
+        )
+    return _FACE_DETECTOR
 
 
-def detect_faces(gray: np.ndarray) -> list:
-    boxes = _face_cascade().detectMultiScale(
-        gray, scaleFactor=1.1, minNeighbors=5, minSize=(40, 40)
-    )
-    return [FaceBox(int(x), int(y), int(w), int(h)) for (x, y, w, h) in boxes]
+def detect_faces(bgr: np.ndarray) -> list:
+    detector = _face_detector()
+    h, w = bgr.shape[:2]
+    detector.setInputSize((w, h))
+    _, faces = detector.detect(bgr)
+    if faces is None:
+        return []
+    boxes = []
+    for f in faces:
+        x, y, fw, fh = f[:4]
+        x, y = max(0, int(round(x))), max(0, int(round(y)))
+        boxes.append(FaceBox(x, y, int(round(fw)), int(round(fh))))
+    return boxes
 
 
 def saliency_map(bgr: np.ndarray, blob_threshold: float = 0.5) -> SaliencyResult:
@@ -77,7 +92,7 @@ def symmetry_score(gray: np.ndarray) -> float:
 
 def detect(bgr: np.ndarray) -> DetectionResult:
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    faces = detect_faces(gray)
+    faces = detect_faces(bgr)
     sal = saliency_map(bgr)
     sym = symmetry_score(gray)
     return DetectionResult(faces=faces, saliency=sal, symmetry_score=sym)

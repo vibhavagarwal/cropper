@@ -16,3 +16,8 @@ actual implemented QSS looks in the real window, not the mockup or a functional 
 - `issues/02-gallery-grid-leaves-large-empty-space-on-wide-windows.md`
 - `issues/03-running-cost-label-is-a-lifetime-total-not-scoped-to-current-gallery.md`
 - `issues/04-escalation-flag-messaging-is-noise-until-thresholds-tuned.md`
+- `issues/05-empty-gallery-placeholder-too-large.md`
+- `issues/06-run-settings-row-overlaps-at-narrow-widths.md`
+- `issues/07-detail-dialog-total-cost-wording.md`
+- `issues/08-empty-gallery-still-leaves-large-void-below-message.md`
+- `issues/09-move-process-folder-button-next-to-browse.md`

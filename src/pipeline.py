@@ -25,6 +25,7 @@ class PhotoJob:
     apply_bw: bool
     apply_grain: bool
     grain_size: str
+    border_size: str
     detection: object = None
     triage_decision: object = None
     crop_box: object = None
@@ -32,6 +33,9 @@ class PhotoJob:
     rendered: object = None
     keep: bool = False
     error: str = None
+    # False only for a raw folder-preview card shown before Process Folder
+    # actually runs it - every real pipeline output defaults to processed.
+    processed: bool = True
 
 
 _PHOTO_EXTS = {".jpg", ".jpeg"}
@@ -41,8 +45,9 @@ def _seed_for(filename: str) -> int:
     return int(hashlib.md5(filename.encode()).hexdigest()[:8], 16)
 
 
-def render_photo(img, crop_box, shape, canvas_long, apply_bw, apply_grain, grain_size, seed):
-    lay = H.layout(shape, canvas_long)
+def render_photo(img, crop_box, shape, canvas_long, apply_bw, apply_grain, grain_size,
+                  border_size, seed):
+    lay = H.layout(shape, canvas_long, border_size=border_size)
     iw, ih = lay["inner"]
     x0, y0, x1, y1 = crop_box.to_pixels(img.width, img.height)
     cropped = img.crop((x0, y0, x1, y1)).resize((iw, ih), Image.LANCZOS)
@@ -57,36 +62,62 @@ def render_photo(img, crop_box, shape, canvas_long, apply_bw, apply_grain, grain
 
 
 def process_photo(src_path: str, shape: str, canvas_long: int, apply_bw: bool,
-                   apply_grain: bool, grain_size: str) -> PhotoJob:
+                   apply_grain: bool, grain_size: str, border_size: str) -> PhotoJob:
     filename = os.path.basename(src_path)
     job = PhotoJob(src_path=src_path, filename=filename, shape=shape,
                    canvas_long=canvas_long, apply_bw=apply_bw, apply_grain=apply_grain,
-                   grain_size=grain_size)
+                   grain_size=grain_size, border_size=border_size)
     try:
         img = ImageOps.exif_transpose(Image.open(src_path)).convert("RGB")
         bgr = np.asarray(img)[:, :, ::-1].copy()
         job.detection = det.detect(bgr)
         job.triage_decision = tri.triage(job.detection, img.width * img.height)
         symmetric = job.detection.symmetry_score >= tri.THRESHOLDS["symmetry_ambiguous_high"]
-        lay = H.layout(shape, canvas_long)
+        lay = H.layout(shape, canvas_long, border_size=border_size)
         job.crop_box = crp.formula_crop(img.width, img.height, lay["inner_ratio"],
                                          job.detection.faces, symmetric)
         seed = _seed_for(filename)
         job.rendered = render_photo(img, job.crop_box, shape, canvas_long,
-                                     apply_bw, apply_grain, grain_size, seed)
+                                     apply_bw, apply_grain, grain_size, border_size, seed)
     except Exception as e:  # noqa: BLE001 - a single bad photo must not stop the batch
         job.error = str(e)
     return job
 
 
-def process_folder(folder: str, shape: str, canvas_long: int, apply_bw: bool,
-                    apply_grain: bool, grain_size: str):
-    paths = sorted(
+def list_photo_paths(folder: str):
+    return sorted(
         p for p in glob.glob(os.path.join(folder, "*"))
         if os.path.splitext(p)[1].lower() in _PHOTO_EXTS
     )
-    for p in paths:
-        yield process_photo(p, shape, canvas_long, apply_bw, apply_grain, grain_size)
+
+
+def process_folder(folder: str, shape: str, canvas_long: int, apply_bw: bool,
+                    apply_grain: bool, grain_size: str, border_size: str):
+    for p in list_photo_paths(folder):
+        yield process_photo(p, shape, canvas_long, apply_bw, apply_grain, grain_size,
+                             border_size)
+
+
+_PREVIEW_THUMB_MAX = 640
+
+
+def load_preview(src_path: str, shape: str, canvas_long: int, apply_bw: bool,
+                  apply_grain: bool, grain_size: str, border_size: str) -> PhotoJob:
+    """Raw, unprocessed preview: EXIF-corrected original, downscaled for a
+    cheap thumbnail, no detection/triage/crop/render. shape/canvas_long/etc.
+    are carried along for consistency with a processed PhotoJob but unused
+    while processed=False."""
+    filename = os.path.basename(src_path)
+    job = PhotoJob(src_path=src_path, filename=filename, shape=shape,
+                   canvas_long=canvas_long, apply_bw=apply_bw, apply_grain=apply_grain,
+                   grain_size=grain_size, border_size=border_size, processed=False)
+    try:
+        img = ImageOps.exif_transpose(Image.open(src_path)).convert("RGB")
+        img.thumbnail((_PREVIEW_THUMB_MAX, _PREVIEW_THUMB_MAX))
+        job.rendered = img
+    except Exception as e:  # noqa: BLE001 - a single bad photo must not stop the batch
+        job.error = str(e)
+    return job
 
 
 def _correct_crop_ratio(crop_box: "crp.CropBox", img_w: int, img_h: int,
@@ -122,7 +153,7 @@ def _correct_crop_ratio(crop_box: "crp.CropBox", img_w: int, img_h: int,
 
 def apply_escalation(job: PhotoJob, provider, tier: str) -> PhotoJob:
     img = ImageOps.exif_transpose(Image.open(job.src_path)).convert("RGB")
-    lay = H.layout(job.shape, job.canvas_long)
+    lay = H.layout(job.shape, job.canvas_long, border_size=job.border_size)
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=90)
     metadata = {
@@ -137,7 +168,8 @@ def apply_escalation(job: PhotoJob, provider, tier: str) -> PhotoJob:
                                         lay["inner_ratio"])
     seed = _seed_for(job.filename)
     job.rendered = render_photo(img, job.crop_box, job.shape, job.canvas_long,
-                                 job.apply_bw, job.apply_grain, job.grain_size, seed)
+                                 job.apply_bw, job.apply_grain, job.grain_size,
+                                 job.border_size, seed)
     return job
 
 
@@ -146,5 +178,6 @@ def apply_manual_crop(job: PhotoJob, crop_box) -> PhotoJob:
     seed = _seed_for(job.filename)
     job.crop_box = crop_box
     job.rendered = render_photo(img, crop_box, job.shape, job.canvas_long,
-                                 job.apply_bw, job.apply_grain, job.grain_size, seed)
+                                 job.apply_bw, job.apply_grain, job.grain_size,
+                                 job.border_size, seed)
     return job

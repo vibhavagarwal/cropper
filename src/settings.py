@@ -12,6 +12,7 @@ class AppSettings:
     apply_bw: bool = True
     apply_grain: bool = True
     grain_size: str = "medium"
+    border_size: str = "medium"
     last_input_folder: str = ""
     last_output_folder: str = ""
 

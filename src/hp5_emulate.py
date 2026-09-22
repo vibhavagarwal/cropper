@@ -37,6 +37,10 @@ from PIL import Image, ImageOps
 from scipy.ndimage import gaussian_filter, zoom
 
 # ---------------------------------------------------------------- parameters
+# Border size presets, fraction of the canvas long edge. "small" is today's
+# original locked value, kept as the default on upgrade.
+BORDER_SIZE_MULT = {"small": 0.02, "medium": 0.04, "large": 0.06}
+
 PARAMS = dict(
     # White balance shift as channel gains (Daylight, +1 R, -8 B)
     wb_r=1.03,
@@ -57,8 +61,9 @@ PARAMS = dict(
     grain_cell=0.0006,   # grain cell size as a fraction of the long edge
     grain_amp=0.019,     # coarse grain std in 0..1 units at mid gray
     grain_fine_amp=0.006,  # 1 px grain layer
-    # Border (LOCKED): white, 2% of long edge, added after the filter
-    border=0.02,
+    # Border: white, added after the filter. Fraction of the long edge,
+    # defaults to the "small" preset (today's original, unchanged value).
+    border=BORDER_SIZE_MULT["small"],
 )
 
 
@@ -157,11 +162,11 @@ def add_border(img, frac, value=255):
 SHAPES = {"square": (1, 1), "portrait": (4, 5), "landscape": (5, 4)}
 
 
-def layout(shape, canvas_long=2400, border_frac=None):
+def layout(shape, canvas_long=2400, border_frac=None, border_size="small"):
     """Fixed-size canvas with a uniform border. The crop stage must target
     the INNER ratio (inner_w / inner_h), not the canvas ratio."""
     rw, rh = SHAPES[shape]
-    border_frac = PARAMS["border"] if border_frac is None else border_frac
+    border_frac = BORDER_SIZE_MULT[border_size] if border_frac is None else border_frac
     long_side = canvas_long
     short_side = round(canvas_long * min(rw, rh) / max(rw, rh))
     cw, ch = (long_side, short_side) if rw >= rh else (short_side, long_side)

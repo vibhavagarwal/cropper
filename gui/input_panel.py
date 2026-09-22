@@ -10,11 +10,14 @@ from PySide6.QtWidgets import (
 
 
 class InputPanel(QWidget):
-    process_requested = Signal(str, str, int, bool, bool, str)
+    process_requested = Signal(str, str, int, bool, bool, str, str)
+    stop_requested = Signal()
+    folder_selected = Signal(str)
 
     def __init__(self, initial_settings):
         super().__init__()
         self.setAcceptDrops(True)
+        self._is_processing = False
 
         self.folder_edit = QLineEdit(initial_settings.last_input_folder)
         self.browse_button = QPushButton("Browse...")
@@ -38,37 +41,49 @@ class InputPanel(QWidget):
         self.grain_size_combo.addItems(["small", "medium", "large"])
         self.grain_size_combo.setCurrentText(initial_settings.grain_size)
 
+        self.border_size_combo = QComboBox()
+        self.border_size_combo.addItems(["small", "medium", "large"])
+        self.border_size_combo.setCurrentText(initial_settings.border_size)
+
         self.process_button = QPushButton("Process Folder")
         self.process_button.setProperty("primary", True)
-        self.process_button.clicked.connect(self._on_process_clicked)
+        self.process_button.clicked.connect(self._on_process_button_clicked)
 
         folder_row = QHBoxLayout()
         folder_row.addWidget(QLabel("Folder:"))
         folder_row.addWidget(self.folder_edit)
         folder_row.addWidget(self.browse_button)
+        folder_row.addWidget(self.process_button)
 
         self.settings_group = QGroupBox("Run settings")
-        settings_row = QHBoxLayout(self.settings_group)
+        # Two rows rather than one long one - a single QHBoxLayout with this
+        # many widgets has no way to wrap, so at narrow window widths the
+        # labels/controls get squeezed below their natural size and overlap
+        # instead of reflowing.
+        settings_row = QHBoxLayout()
         settings_row.addWidget(QLabel("Shape:"))
         settings_row.addWidget(self.shape_combo)
         settings_row.addSpacing(12)
         settings_row.addWidget(QLabel("Canvas long edge:"))
         settings_row.addWidget(self.canvas_spin)
-        settings_row.addSpacing(28)
-        settings_row.addWidget(self.bw_checkbox)
-        settings_row.addWidget(self.grain_checkbox)
-        settings_row.addWidget(QLabel("Grain size:"))
-        settings_row.addWidget(self.grain_size_combo)
         settings_row.addStretch()
 
-        process_row = QHBoxLayout()
-        process_row.addStretch()
-        process_row.addWidget(self.process_button)
+        filter_row = QHBoxLayout()
+        filter_row.addWidget(self.bw_checkbox)
+        filter_row.addWidget(self.grain_checkbox)
+        filter_row.addWidget(QLabel("Grain size:"))
+        filter_row.addWidget(self.grain_size_combo)
+        filter_row.addWidget(QLabel("Border size:"))
+        filter_row.addWidget(self.border_size_combo)
+        filter_row.addStretch()
+
+        settings_group_layout = QVBoxLayout(self.settings_group)
+        settings_group_layout.addLayout(settings_row)
+        settings_group_layout.addLayout(filter_row)
 
         layout = QVBoxLayout(self)
         layout.addLayout(folder_row)
         layout.addWidget(self.settings_group)
-        layout.addLayout(process_row)
 
     def current_folder(self) -> str:
         return self.folder_edit.text()
@@ -77,8 +92,12 @@ class InputPanel(QWidget):
         folder = QFileDialog.getExistingDirectory(self, "Choose input folder")
         if folder:
             self.folder_edit.setText(folder)
+            self.folder_selected.emit(folder)
 
-    def _on_process_clicked(self):
+    def _on_process_button_clicked(self):
+        if self._is_processing:
+            self.stop_requested.emit()
+            return
         self.process_requested.emit(
             self.folder_edit.text(),
             self.shape_combo.currentText(),
@@ -86,7 +105,12 @@ class InputPanel(QWidget):
             self.bw_checkbox.isChecked(),
             self.grain_checkbox.isChecked(),
             self.grain_size_combo.currentText(),
+            self.border_size_combo.currentText(),
         )
+
+    def set_processing(self, is_processing: bool):
+        self._is_processing = is_processing
+        self.process_button.setText("Stop" if is_processing else "Process Folder")
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -98,4 +122,5 @@ class InputPanel(QWidget):
             path = urls[0].toLocalFile()
             if os.path.isdir(path):
                 self.folder_edit.setText(path)
+                self.folder_selected.emit(path)
         event.acceptProposedAction()

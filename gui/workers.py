@@ -14,7 +14,8 @@ class ProcessFolderWorker(QThread):
     photo_ready = Signal(object)
     finished_all = Signal()
 
-    def __init__(self, folder, shape, canvas_long, apply_bw, apply_grain, grain_size):
+    def __init__(self, folder, shape, canvas_long, apply_bw, apply_grain, grain_size,
+                 border_size):
         super().__init__()
         self.folder = folder
         self.shape = shape
@@ -22,11 +23,45 @@ class ProcessFolderWorker(QThread):
         self.apply_bw = apply_bw
         self.apply_grain = apply_grain
         self.grain_size = grain_size
+        self.border_size = border_size
+        self._stop_requested = False
+
+    def stop(self):
+        # Cooperative: lets the photo currently being processed finish (and
+        # still get emitted/kept) rather than being interrupted mid-work;
+        # only the photos after it are skipped.
+        self._stop_requested = True
 
     def run(self):
-        for job in P.process_folder(self.folder, self.shape, self.canvas_long,
-                                     self.apply_bw, self.apply_grain, self.grain_size):
+        for path in P.list_photo_paths(self.folder):
+            if self._stop_requested:
+                break
+            job = P.process_photo(path, self.shape, self.canvas_long, self.apply_bw,
+                                   self.apply_grain, self.grain_size, self.border_size)
             self.photo_ready.emit(job)
+        self.finished_all.emit()
+
+
+class FolderPreviewWorker(QThread):
+    preview_ready = Signal(object)
+    finished_all = Signal()
+
+    def __init__(self, folder, shape, canvas_long, apply_bw, apply_grain, grain_size,
+                 border_size):
+        super().__init__()
+        self.folder = folder
+        self.shape = shape
+        self.canvas_long = canvas_long
+        self.apply_bw = apply_bw
+        self.apply_grain = apply_grain
+        self.grain_size = grain_size
+        self.border_size = border_size
+
+    def run(self):
+        for path in P.list_photo_paths(self.folder):
+            job = P.load_preview(path, self.shape, self.canvas_long, self.apply_bw,
+                                  self.apply_grain, self.grain_size, self.border_size)
+            self.preview_ready.emit(job)
         self.finished_all.emit()
 
 
