@@ -127,6 +127,8 @@ class PhotoCard(QWidget):
             self._set_status_state("flagged")
         else:
             self.status_label.setText("formula crop")
+        if getattr(self.job, "moodportrait", False) and self.job.look_faces == []:
+            self.status_label.setText(self.status_label.text() + " · MoodPortrait: no face found")
 
     def _set_status_state(self, state):
         self.status_label.setProperty("state", state)

@@ -15,7 +15,7 @@ class ProcessFolderWorker(QThread):
     finished_all = Signal()
 
     def __init__(self, folder, shape, canvas_long, apply_bw, apply_grain, grain_size,
-                 border_size):
+                 border_size, look=""):
         super().__init__()
         self.folder = folder
         self.shape = shape
@@ -24,6 +24,7 @@ class ProcessFolderWorker(QThread):
         self.apply_grain = apply_grain
         self.grain_size = grain_size
         self.border_size = border_size
+        self.moodportrait = look == "moodportrait"
         self._stop_requested = False
 
     def stop(self):
@@ -37,7 +38,8 @@ class ProcessFolderWorker(QThread):
             if self._stop_requested:
                 break
             job = P.process_photo(path, self.shape, self.canvas_long, self.apply_bw,
-                                   self.apply_grain, self.grain_size, self.border_size)
+                                   self.apply_grain, self.grain_size, self.border_size,
+                                   self.moodportrait)
             self.photo_ready.emit(job)
         self.finished_all.emit()
 
@@ -47,7 +49,7 @@ class FolderPreviewWorker(QThread):
     finished_all = Signal()
 
     def __init__(self, folder, shape, canvas_long, apply_bw, apply_grain, grain_size,
-                 border_size):
+                 border_size, look=""):
         super().__init__()
         self.folder = folder
         self.shape = shape
@@ -56,6 +58,7 @@ class FolderPreviewWorker(QThread):
         self.apply_grain = apply_grain
         self.grain_size = grain_size
         self.border_size = border_size
+        self.moodportrait = look == "moodportrait"
 
     def run(self):
         for path in P.list_photo_paths(self.folder):

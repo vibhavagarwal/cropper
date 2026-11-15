@@ -12,7 +12,9 @@ from PIL import Image, ImageOps
 
 import crop as crp
 import detection as det
+import face_blaze as fb
 import hp5_emulate as H
+import moodportrait as mood
 import triage as tri
 
 
@@ -36,6 +38,10 @@ class PhotoJob:
     # False only for a raw folder-preview card shown before Process Folder
     # actually runs it - every real pipeline output defaults to processed.
     processed: bool = True
+    # MoodPortrait look (colour; replaces the B/W filter). look_faces are BlazeFace faces as fractions of the
+    # EXIF-upright original, found once per photo so re-renders (manual crop, escalation) do not re-detect.
+    moodportrait: bool = False
+    look_faces: object = None
 
 
 _PHOTO_EXTS = {".jpg", ".jpeg"}
@@ -46,13 +52,21 @@ def _seed_for(filename: str) -> int:
 
 
 def render_photo(img, crop_box, shape, canvas_long, apply_bw, apply_grain, grain_size,
-                  border_size, seed):
+                  border_size, seed, moodportrait=False, faces=None):
     lay = H.layout(shape, canvas_long, border_size=border_size)
     iw, ih = lay["inner"]
     x0, y0, x1, y1 = crop_box.to_pixels(img.width, img.height)
     cropped = img.crop((x0, y0, x1, y1)).resize((iw, ih), Image.LANCZOS)
-    out = H.emulate(cropped, seed, apply_bw=apply_bw, apply_grain=apply_grain,
-                     grain_size=grain_size)
+    if moodportrait:
+        # grade + pool of light on the crop (faces remapped from the original into the crop), then Cropper's own
+        # grain on the colour image; apply_bw is ignored (the look is colour)
+        look = mood.render_look(np.asarray(cropped.convert("RGB")), mood.faces_in_crop(faces, crop_box))
+        out = H.emulate(Image.fromarray(look), seed, apply_bw=False, apply_grain=apply_grain,
+                         grain_size=grain_size)
+        apply_bw = False
+    else:
+        out = H.emulate(cropped, seed, apply_bw=apply_bw, apply_grain=apply_grain,
+                         grain_size=grain_size)
     t = lay["border"]
     mode = "L" if apply_bw else "RGB"
     white = 255 if apply_bw else (255, 255, 255)
@@ -62,11 +76,12 @@ def render_photo(img, crop_box, shape, canvas_long, apply_bw, apply_grain, grain
 
 
 def process_photo(src_path: str, shape: str, canvas_long: int, apply_bw: bool,
-                   apply_grain: bool, grain_size: str, border_size: str) -> PhotoJob:
+                   apply_grain: bool, grain_size: str, border_size: str,
+                   moodportrait: bool = False) -> PhotoJob:
     filename = os.path.basename(src_path)
     job = PhotoJob(src_path=src_path, filename=filename, shape=shape,
                    canvas_long=canvas_long, apply_bw=apply_bw, apply_grain=apply_grain,
-                   grain_size=grain_size, border_size=border_size)
+                   grain_size=grain_size, border_size=border_size, moodportrait=moodportrait)
     try:
         img = ImageOps.exif_transpose(Image.open(src_path)).convert("RGB")
         bgr = np.asarray(img)[:, :, ::-1].copy()
@@ -77,8 +92,11 @@ def process_photo(src_path: str, shape: str, canvas_long: int, apply_bw: bool,
         job.crop_box = crp.formula_crop(img.width, img.height, lay["inner_ratio"],
                                          job.detection.faces, symmetric)
         seed = _seed_for(filename)
+        if moodportrait:
+            job.look_faces = fb.find_faces(np.asarray(img))
         job.rendered = render_photo(img, job.crop_box, shape, canvas_long,
-                                     apply_bw, apply_grain, grain_size, border_size, seed)
+                                     apply_bw, apply_grain, grain_size, border_size, seed,
+                                     moodportrait, job.look_faces)
     except Exception as e:  # noqa: BLE001 - a single bad photo must not stop the batch
         job.error = str(e)
     return job
@@ -92,10 +110,11 @@ def list_photo_paths(folder: str):
 
 
 def process_folder(folder: str, shape: str, canvas_long: int, apply_bw: bool,
-                    apply_grain: bool, grain_size: str, border_size: str):
+                    apply_grain: bool, grain_size: str, border_size: str,
+                    moodportrait: bool = False):
     for p in list_photo_paths(folder):
         yield process_photo(p, shape, canvas_long, apply_bw, apply_grain, grain_size,
-                             border_size)
+                             border_size, moodportrait)
 
 
 _PREVIEW_THUMB_MAX = 640
@@ -151,6 +170,13 @@ def _correct_crop_ratio(crop_box: "crp.CropBox", img_w: int, img_h: int,
     )
 
 
+def _look_faces(job, img):
+    """The MoodPortrait faces for a re-render: the ones found at process time, detected now only if missing."""
+    if job.moodportrait and job.look_faces is None:
+        job.look_faces = fb.find_faces(np.asarray(img))
+    return job.look_faces
+
+
 def apply_escalation(job: PhotoJob, provider, tier: str) -> PhotoJob:
     img = ImageOps.exif_transpose(Image.open(job.src_path)).convert("RGB")
     lay = H.layout(job.shape, job.canvas_long, border_size=job.border_size)
@@ -169,7 +195,7 @@ def apply_escalation(job: PhotoJob, provider, tier: str) -> PhotoJob:
     seed = _seed_for(job.filename)
     job.rendered = render_photo(img, job.crop_box, job.shape, job.canvas_long,
                                  job.apply_bw, job.apply_grain, job.grain_size,
-                                 job.border_size, seed)
+                                 job.border_size, seed, job.moodportrait, _look_faces(job, img))
     return job
 
 
@@ -179,5 +205,5 @@ def apply_manual_crop(job: PhotoJob, crop_box) -> PhotoJob:
     job.crop_box = crop_box
     job.rendered = render_photo(img, crop_box, job.shape, job.canvas_long,
                                  job.apply_bw, job.apply_grain, job.grain_size,
-                                 job.border_size, seed)
+                                 job.border_size, seed, job.moodportrait, _look_faces(job, img))
     return job

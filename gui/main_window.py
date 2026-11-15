@@ -177,7 +177,8 @@ class MainWindow(QMainWindow):
         self._gallery_folder = os.path.normpath(folder)
         self._preview_worker = FolderPreviewWorker(
             folder, self.settings.shape, self.settings.canvas_long, self.settings.apply_bw,
-            self.settings.apply_grain, self.settings.grain_size, self.settings.border_size)
+            self.settings.apply_grain, self.settings.grain_size, self.settings.border_size,
+            self.settings.look)
         self._preview_worker.preview_ready.connect(self._on_preview_ready)
         self._preview_worker.start()
 
@@ -193,7 +194,9 @@ class MainWindow(QMainWindow):
         card.keep_selection_changed.connect(self._update_save_button)
 
     def _start_processing(self, folder, shape, canvas_long, apply_bw, apply_grain, grain_size,
-                           border_size):
+                           border_size, look=None):
+        if look is None:
+            look = "bw" if apply_bw else "none"
         if self._worker is not None and self._worker.isRunning():
             self.statusBar().showMessage("Already processing a folder — please wait for it to finish.", 5000)
             return
@@ -221,6 +224,7 @@ class MainWindow(QMainWindow):
         self.settings.shape = shape
         self.settings.canvas_long = canvas_long
         self.settings.apply_bw = apply_bw
+        self.settings.look = look
         self.settings.apply_grain = apply_grain
         self.settings.grain_size = grain_size
         self.settings.border_size = border_size
@@ -231,7 +235,7 @@ class MainWindow(QMainWindow):
         self._set_busy(True)
         self.input_panel.set_processing(True)
         self._worker = ProcessFolderWorker(folder, shape, canvas_long, apply_bw, apply_grain,
-                                            grain_size, border_size)
+                                            grain_size, border_size, look)
         self._worker.photo_ready.connect(self._on_photo_ready)
         self._worker.finished_all.connect(self._on_processing_finished)
         self._worker.start()

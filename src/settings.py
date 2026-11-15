@@ -5,16 +5,25 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 
+LOOKS = ("none", "bw", "moodportrait")
+
+
 @dataclass
 class AppSettings:
     shape: str = "square"
     canvas_long: int = 2400
     apply_bw: bool = True
+    # "none" | "bw" | "moodportrait". Empty means an older settings file: derived from apply_bw on load.
+    look: str = ""
     apply_grain: bool = True
     grain_size: str = "medium"
     border_size: str = "medium"
     last_input_folder: str = ""
     last_output_folder: str = ""
+
+    def __post_init__(self):
+        if self.look not in LOOKS:  # older settings file (or default): derive from apply_bw
+            self.look = "bw" if self.apply_bw else "none"
 
     @classmethod
     def load(cls, path: Path) -> "AppSettings":

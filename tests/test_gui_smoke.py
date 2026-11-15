@@ -39,7 +39,7 @@ class InputPanelTests(unittest.TestCase):
                                         border_size="large"))
         self.assertEqual(panel.shape_combo.currentText(), "portrait")
         self.assertEqual(panel.canvas_spin.value(), 1800)
-        self.assertFalse(panel.bw_checkbox.isChecked())
+        self.assertEqual(panel.look_combo.currentData(), "none")
         self.assertFalse(panel.grain_checkbox.isChecked())
         self.assertEqual(panel.grain_size_combo.currentText(), "large")
         self.assertEqual(panel.border_size_combo.currentText(), "large")
@@ -49,7 +49,7 @@ class InputPanelTests(unittest.TestCase):
         panel.folder_edit.setText("C:/photos")
         panel.shape_combo.setCurrentText("landscape")
         panel.canvas_spin.setValue(3000)
-        panel.bw_checkbox.setChecked(False)
+        panel.look_combo.setCurrentIndex(panel.look_combo.findData("none"))
         panel.grain_checkbox.setChecked(False)
         panel.grain_size_combo.setCurrentText("small")
         panel.border_size_combo.setCurrentText("medium")
@@ -59,7 +59,7 @@ class InputPanelTests(unittest.TestCase):
         panel._on_process_button_clicked()
 
         self.assertEqual(received, [("C:/photos", "landscape", 3000, False, False, "small",
-                                      "medium")])
+                                      "medium", "none")])
 
     def test_current_folder_reflects_folder_edit(self):
         panel = InputPanel(AppSettings())
@@ -70,7 +70,7 @@ class InputPanelTests(unittest.TestCase):
         panel = InputPanel(AppSettings())
         self.assertIn(panel.shape_combo, panel.settings_group.findChildren(QComboBox))
         self.assertIn(panel.canvas_spin, panel.settings_group.findChildren(QSpinBox))
-        self.assertIn(panel.bw_checkbox, panel.settings_group.findChildren(QCheckBox))
+        self.assertIn(panel.look_combo, panel.settings_group.findChildren(QComboBox))
         self.assertIn(panel.grain_checkbox, panel.settings_group.findChildren(QCheckBox))
         self.assertIn(panel.grain_size_combo, panel.settings_group.findChildren(QComboBox))
         self.assertIn(panel.border_size_combo, panel.settings_group.findChildren(QComboBox))
@@ -192,7 +192,7 @@ class InputPanelTests(unittest.TestCase):
         panel.show()
         panel.resize(900, 200)
         _app.processEvents()
-        widgets = [panel.shape_combo, panel.canvas_spin, panel.bw_checkbox,
+        widgets = [panel.shape_combo, panel.canvas_spin, panel.look_combo,
                    panel.grain_checkbox, panel.grain_size_combo, panel.border_size_combo]
         for w in widgets:
             self.assertGreater(w.width(), 0)
