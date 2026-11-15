@@ -115,6 +115,16 @@ Run the app:
 python gui/main.py
 ```
 
+Build a Windows executable (PyInstaller, one-folder, windowed):
+
+```powershell
+.\build.ps1            # -> dist\Cropper\Cropper.exe (zip the dist\Cropper folder to share it)
+.\build.ps1 -Console   # -> dist\Cropper-console\ variant that shows tracebacks
+```
+
+The build installs `requirements-build.txt` into `.venv` first. Settings and the
+decision log still live in `~/.cropper/`, independent of where the exe sits.
+
 Escalating a photo to the paid AI tier requires `OPENAI_API_KEY` in your
 environment (or entered once in-app, stored via OS-level secure storage,
 Windows Credential Manager via `keyring`, never a plaintext config file).
@@ -131,15 +141,13 @@ On a machine with no display attached, set `QT_QPA_PLATFORM=offscreen` first.
 
 ## Current limitations
 
-- **Local-only, run-from-source.** No installer or packaged build. That's a
-  deliberate v1 scope choice (personal tool), not yet revisited for
-  distribution.
-- **Portrait-theme filter not designed.** The HP5 filter (an emulation of
-  Ilford HP5 Plus 400, a classic black-and-white film stock: grainy,
-  high-contrast, the look you'd get from a 35mm film camera rather than a
-  clean digital photo) currently applies to every photo. A portrait or
-  people-focused look is deferred, and until it exists, portrait-themed
-  photos are flagged rather than silently given the landscape filter.
+- **Local-only, no installer.** A double-clickable Windows build can be made
+  with `build.ps1` (see Setup), but there is no installer, code signing, or
+  auto-update, and it is Windows-only.
+- **MoodPortrait is for portraits and applies to the whole run.** Pick it in the Look dropdown (None, B&W (HP5),
+  MoodPortrait); every photo in the run gets it, and you untick Keep on the ones you do not want. It lights up to
+  two large faces, falls back to a frame-centred oval when it finds no face (the card says so), and is only
+  tuned on medium-brown skin. See `docs/filter_moodportrait_notes.md`.
 - **Triage thresholds are hand-tuned, not adaptive.** They're edited in code
   as they get validated against real batches. There's no in-app settings UI
   for them by design, since this is infrequent, data-driven tuning, not a
@@ -151,8 +159,8 @@ On a machine with no display attached, set `QT_QPA_PLATFORM=offscreen` first.
 
 ## Roadmap
 
-- Portrait-theme filter design and routing, plus additional film-emulation
-  filters beyond HP5 (other classic film stocks, not just Ilford HP5 Plus)
+- Additional film-emulation filters beyond HP5 (other classic film stocks, not just Ilford HP5 Plus), and
+  per-photo look overrides
 - A second escalation provider behind the existing interface, to validate
   the abstraction actually holds
 - Batch API mode for escalation calls (confirmed 50% discount available,

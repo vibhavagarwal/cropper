@@ -1,6 +1,6 @@
 # Build a Windows exe with PyInstaller
 
-Status: ready-for-agent
+Status: resolved
 Spec: ../spec.md
 
 ## What to build
@@ -33,3 +33,14 @@ one-folder Windows build of `gui/main.py`, per `../spec.md`.
 - [ ] README updated; ADR added if tool/Python version decision deviates from the spec
 
 ## Comments
+
+Resolved. PyInstaller 6.22.3 lists Python 3.14 support, so no ADR (no deviation from the spec).
+Files: `cropper.spec`, `build.ps1`, `requirements-build.txt`, `tools/make_icon.py`. No app code changed:
+frozen modules' `__file__` is the bundle root, so `datas` go to `models/` and `assets/`.
+
+Verified: `build.ps1` builds `dist/Cropper/Cropper.exe` (360 MB folder), launches windowed, window opens.
+A probe frozen with the same model/hiddenimports settings gave byte-identical detection, `process_folder`
+render hashes, and keyring save/load/clear versus running from source.
+
+Not verified (needs a human): launch on a machine without Python; visual check of logo, icons and dark
+theme in the exe; the no-key status-bar message in the frozen GUI.
